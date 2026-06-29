@@ -5,6 +5,7 @@ import os
 import base64
 import json
 from dotenv import load_dotenv
+from github import Github # 👈 YE NAYA IMPORT ADD KIYA
 
 load_dotenv()
 
@@ -22,7 +23,7 @@ def home():
 @app.route('/chat', methods=['POST'])
 def chat():
     user_message = request.json.get('message')
-    
+
     try:
         ai_response = requests.post(
             "https://openrouter.ai/api/v1/chat/completions",
@@ -36,26 +37,26 @@ def chat():
                 "model": "nvidia/nemotron-3-super-120b-a12b:free",
                 "messages": [
                     {"role": "system", "content": f"""Tu ek GitHub agent hai. User ka GitHub username: {GITHUB_USERNAME}.
-                    
+
                     RULES:
                     1. Repo banane ke liye: CREATE_REPO: repo-name
                     2. File banane ke liye JSON: CREATE_FILE: {{"repo": "name", "filename": "file.html", "code": "poora code"}}
                     3. Repo delete karne ke liye: DELETE_REPO: repo-name
-                    
+
                     Sirf ek command ek baar me. Poora code dena file me."""},
                     {"role": "user", "content": user_message}
                 ]
             }
         ).json()
-        
+
         if 'error' in ai_response:
             return jsonify({"reply": f"OpenRouter Error: {ai_response['error']['message']}"})
-            
+
         ai_text = ai_response['choices'][0]['message']['content']
-        
+
     except Exception as e:
         return jsonify({"reply": f"Error: {str(e)}"})
-    
+
     # CREATE REPO
     if "CREATE_REPO:" in ai_text:
         repo_name = ai_text.split("CREATE_REPO:")[1].strip()
@@ -70,7 +71,7 @@ def chat():
             return jsonify({"reply": f"Repo '{repo_name}' already exist karta hai."})
         else:
             return jsonify({"reply": f"GitHub Error: {r.json().get('message', 'Repo nahi bana')}"})
-    
+
     # DELETE REPO - NAYA FEATURE
     elif "DELETE_REPO:" in ai_text:
         repo_name = ai_text.split("DELETE_REPO:")[1].strip()
@@ -82,7 +83,7 @@ def chat():
             return jsonify({"reply": f"Repo '{repo_name}' delete ho gaya bhai 🗑️✅"})
         else:
             return jsonify({"reply": f"Delete Error: {r.json().get('message', 'Repo delete nahi hua')}"})
-        
+
     # CREATE FILE - JSON WALA
     elif "CREATE_FILE:" in ai_text:
         try:
@@ -91,9 +92,9 @@ def chat():
             repo_name = data['repo']
             filename = data['filename']
             code = data['code']
-            
+
             content_b64 = base64.b64encode(code.encode()).decode()
-            
+
             r = requests.put(
                 f"https://api.github.com/repos/{GITHUB_USERNAME}/{repo_name}/contents/{filename}",
                 headers={"Authorization": f"token {GITHUB_TOKEN}"},
@@ -108,9 +109,30 @@ def chat():
                 return jsonify({"reply": f"GitHub Error: {r.json().get('message', 'File nahi bani')}"})
         except Exception as e:
             return jsonify({"reply": f"File parse error: {str(e)}"})
-    
+
     else:
         return jsonify({"reply": ai_text})
+
+# 👇👇 NAYA /repos ROUTE - CLAUDE KE UI KE LIYE 👇👇
+@app.route('/repos', methods=['GET'])
+def get_repos():
+    try:
+        g = Github(GITHUB_TOKEN)
+        user = g.get_user()
+        repos = []
+        for r in user.get_repos(sort="updated", per_page=30):
+            repos.append({
+                "name": r.name,
+                "html_url": r.html_url,
+                "description": r.description or "No description",
+                "updated_at": r.updated_at.isoformat(),
+                "language": r.language,
+                "private": r.private,
+            })
+        return jsonify({"repos": repos})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+# 👆👆 YAHAN TAK NAYA CODE 👆👆
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
