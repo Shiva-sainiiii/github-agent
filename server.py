@@ -59,7 +59,7 @@ def chat():
 
     # CREATE REPO
     if "CREATE_REPO:" in ai_text:
-        repo_name = ai_text.split("CREATE_REPO:")[1].strip()
+        repo_name = ai_text.split("CREATE_REPO:")[1].strip().split()[0].strip()
         r = requests.post(
             "https://api.github.com/user/repos",
             headers={"Authorization": f"token {GITHUB_TOKEN}"},
@@ -74,7 +74,7 @@ def chat():
 
     # DELETE REPO - NAYA FEATURE
     elif "DELETE_REPO:" in ai_text:
-        repo_name = ai_text.split("DELETE_REPO:")[1].strip()
+        repo_name = ai_text.split("DELETE_REPO:")[1].strip().split()[0].strip()
         r = requests.delete(
             f"https://api.github.com/repos/{GITHUB_USERNAME}/{repo_name}",
             headers={"Authorization": f"token {GITHUB_TOKEN}"}
