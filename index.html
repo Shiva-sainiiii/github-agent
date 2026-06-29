@@ -1,44 +1,1592 @@
 <!DOCTYPE html>
-<html>
+<html lang="en" data-theme="dark">
 <head>
-    <title>My GitHub Agent</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <style>
-        body { font-family: Arial; background: #0d1117; color: #c9d1d9; margin: 0; padding: 20px; }
-        .chat { max-width: 600px; margin: auto; }
-        .msg { background: #161b22; padding: 15px; margin: 10px 0; border-radius: 8px; border: 1px solid #30363d; }
-        .user { background: #1f6feb; color: white; }
-        input { width: 70%; padding: 12px; background: #0d1117; border: 1px solid #30363d; color: white; border-radius: 6px; }
-        button { padding: 12px 20px; background: #238636; color: white; border: none; border-radius: 6px; }
-        h1 { text-align: center; color: #58a6ff; }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GitHub Agent ✦</title>
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+
+  <!-- Highlight.js -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/github-dark.min.css" id="hljs-theme" />
+  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+
+  <!-- Marked.js -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+
+  <!-- Toastify -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css" />
+  <script src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
+
+  <style>
+    /* ─── RESET & TOKENS ───────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      /* Dark theme */
+      --bg-base:      #060910;
+      --bg-panel:     rgba(13, 18, 30, 0.85);
+      --bg-msg-user:  rgba(99, 102, 241, 0.18);
+      --bg-msg-agent: rgba(255, 255, 255, 0.04);
+      --border:       rgba(255, 255, 255, 0.08);
+      --border-hover: rgba(99, 102, 241, 0.5);
+      --text-primary: #e2e8f0;
+      --text-secondary: #94a3b8;
+      --text-muted:   #475569;
+      --accent:       #6366f1;
+      --accent-glow:  rgba(99, 102, 241, 0.35);
+      --accent-2:     #8b5cf6;
+      --success:      #10b981;
+      --danger:       #ef4444;
+      --warning:      #f59e0b;
+      --glass:        rgba(13, 18, 30, 0.7);
+      --glass-light:  rgba(255,255,255,0.03);
+      --sidebar-w:    340px;
+      --shadow-lg:    0 25px 50px rgba(0,0,0,0.5);
+      --radius:       14px;
+      --radius-sm:    8px;
+    }
+
+    [data-theme="light"] {
+      --bg-base:      #f0f4ff;
+      --bg-panel:     rgba(255,255,255,0.85);
+      --bg-msg-user:  rgba(99,102,241,0.12);
+      --bg-msg-agent: rgba(0,0,0,0.03);
+      --border:       rgba(0,0,0,0.08);
+      --border-hover: rgba(99,102,241,0.4);
+      --text-primary: #1e293b;
+      --text-secondary: #475569;
+      --text-muted:   #94a3b8;
+      --glass:        rgba(255,255,255,0.7);
+      --glass-light:  rgba(255,255,255,0.5);
+    }
+
+    html, body {
+      height: 100%;
+      font-family: 'Inter', system-ui, sans-serif;
+      background: var(--bg-base);
+      color: var(--text-primary);
+      overflow: hidden;
+      transition: background 0.3s, color 0.3s;
+    }
+
+    /* ─── CANVAS BACKGROUND ───────────────────────────────────────── */
+    #bg-canvas {
+      position: fixed; inset: 0; z-index: 0;
+      pointer-events: none;
+    }
+
+    /* ─── LAYOUT ──────────────────────────────────────────────────── */
+    .app {
+      position: relative; z-index: 1;
+      display: flex; flex-direction: column;
+      height: 100vh; width: 100%;
+      max-width: 900px; margin: 0 auto;
+      padding: 0 12px;
+    }
+
+    /* ─── HEADER ──────────────────────────────────────────────────── */
+    .header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 0 10px;
+      flex-shrink: 0;
+    }
+
+    .header-brand {
+      display: flex; align-items: center; gap: 10px;
+    }
+
+    .brand-icon {
+      width: 38px; height: 38px;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 0 20px var(--accent-glow);
+      flex-shrink: 0;
+    }
+
+    .brand-icon svg { width: 20px; height: 20px; color: white; }
+
+    .brand-name {
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 700; font-size: 1.05rem;
+      background: linear-gradient(135deg, #e2e8f0 30%, var(--accent));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .brand-badge {
+      font-size: 0.6rem; font-weight: 600; letter-spacing: .08em;
+      padding: 2px 7px; border-radius: 20px;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      color: white; margin-left: 2px;
+      -webkit-text-fill-color: white;
+      align-self: center;
+    }
+
+    .header-actions {
+      display: flex; align-items: center; gap: 8px;
+    }
+
+    .icon-btn {
+      width: 36px; height: 36px;
+      display: flex; align-items: center; justify-content: center;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: var(--glass-light);
+      backdrop-filter: blur(12px);
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .icon-btn:hover {
+      border-color: var(--border-hover);
+      color: var(--text-primary);
+      background: var(--glass);
+    }
+
+    .icon-btn svg { width: 16px; height: 16px; }
+
+    /* ─── STATUS BAR ──────────────────────────────────────────────── */
+    .status-bar {
+      display: flex; align-items: center; gap: 6px;
+      padding: 6px 12px;
+      background: var(--glass-light);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      margin-bottom: 10px;
+      font-size: 0.72rem; color: var(--text-muted);
+      flex-shrink: 0;
+    }
+
+    .status-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--success);
+      box-shadow: 0 0 6px var(--success);
+      animation: pulse-dot 2s infinite;
+      flex-shrink: 0;
+    }
+
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.4; }
+    }
+
+    .status-text { color: var(--text-secondary); }
+
+    /* ─── CHAT AREA ───────────────────────────────────────────────── */
+    .chat-wrap {
+      flex: 1; overflow: hidden;
+      background: var(--bg-panel);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      display: flex; flex-direction: column;
+      box-shadow: var(--shadow-lg);
+    }
+
+    #messages {
+      flex: 1; overflow-y: auto;
+      padding: 20px 16px;
+      scroll-behavior: smooth;
+      display: flex; flex-direction: column; gap: 16px;
+    }
+
+    #messages::-webkit-scrollbar { width: 4px; }
+    #messages::-webkit-scrollbar-track { background: transparent; }
+    #messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+    /* ─── EMPTY STATE ─────────────────────────────────────────────── */
+    .empty-state {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      flex: 1; text-align: center; gap: 16px; padding: 32px;
+      animation: fade-in 0.5s ease;
+    }
+
+    .empty-icon {
+      width: 60px; height: 60px;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      border-radius: 18px;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 0 40px var(--accent-glow);
+    }
+
+    .empty-icon svg { width: 28px; height: 28px; color: white; }
+    .empty-state h2 { font-size: 1.15rem; font-weight: 600; color: var(--text-primary); }
+    .empty-state p { font-size: 0.83rem; color: var(--text-secondary); max-width: 300px; line-height: 1.6; }
+
+    .quick-cmds {
+      display: flex; flex-wrap: wrap; gap: 8px; justify-content: center;
+      margin-top: 4px;
+    }
+
+    .quick-cmd {
+      font-size: 0.75rem; padding: 6px 12px;
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      background: var(--glass-light);
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.2s;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .quick-cmd:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: rgba(99,102,241,0.08);
+    }
+
+    /* ─── MESSAGE BUBBLES ─────────────────────────────────────────── */
+    .msg-row {
+      display: flex; gap: 10px; align-items: flex-start;
+      animation: slide-in 0.3s ease;
+    }
+
+    .msg-row.user { flex-direction: row-reverse; }
+
+    @keyframes slide-in {
+      from { opacity: 0; transform: translateY(10px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes fade-in {
+      from { opacity: 0; }
+      to   { opacity: 1; }
+    }
+
+    .avatar {
+      width: 32px; height: 32px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0; font-size: 0.8rem; font-weight: 700;
+      border: 1px solid var(--border);
+    }
+
+    .avatar.user-av {
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      color: white; border-color: transparent;
+    }
+
+    .avatar.agent-av {
+      background: linear-gradient(135deg, #0f172a, #1e293b);
+      font-size: 0.9rem;
+    }
+
+    .bubble {
+      max-width: min(72%, 520px);
+      padding: 12px 15px;
+      border-radius: 16px;
+      font-size: 0.875rem;
+      line-height: 1.65;
+      position: relative;
+      word-break: break-word;
+    }
+
+    .msg-row.user .bubble {
+      background: var(--bg-msg-user);
+      border: 1px solid rgba(99,102,241,0.25);
+      border-top-right-radius: 4px;
+      color: var(--text-primary);
+    }
+
+    .msg-row.agent .bubble {
+      background: var(--bg-msg-agent);
+      border: 1px solid var(--border);
+      border-top-left-radius: 4px;
+    }
+
+    .msg-meta {
+      font-size: 0.65rem; color: var(--text-muted);
+      margin-top: 4px; padding: 0 2px;
+    }
+
+    .msg-row.user .msg-meta { text-align: right; }
+
+    /* ─── MARKDOWN STYLES ─────────────────────────────────────────── */
+    .bubble p { margin-bottom: 8px; }
+    .bubble p:last-child { margin-bottom: 0; }
+
+    .bubble a {
+      color: var(--accent);
+      text-decoration: underline;
+      text-underline-offset: 2px;
+      word-break: break-all;
+    }
+
+    .bubble a:hover { color: var(--accent-2); }
+
+    .bubble strong { font-weight: 600; color: var(--text-primary); }
+
+    .bubble ul, .bubble ol { padding-left: 18px; margin-bottom: 8px; }
+    .bubble li { margin-bottom: 4px; }
+
+    .bubble h1,.bubble h2,.bubble h3 {
+      font-weight: 600; margin: 12px 0 6px;
+      color: var(--text-primary);
+    }
+    .bubble h1 { font-size: 1.1rem; }
+    .bubble h2 { font-size: 1rem; }
+    .bubble h3 { font-size: 0.9rem; }
+
+    .bubble blockquote {
+      border-left: 3px solid var(--accent);
+      padding-left: 12px;
+      color: var(--text-secondary);
+      margin: 8px 0;
+      font-style: italic;
+    }
+
+    .bubble code:not(pre code) {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.8rem;
+      background: rgba(99,102,241,0.12);
+      color: #a5b4fc;
+      padding: 2px 6px; border-radius: 4px;
+    }
+
+    /* ─── CODE BLOCK ──────────────────────────────────────────────── */
+    .code-block-wrap {
+      position: relative;
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+      margin: 10px 0;
+      border: 1px solid var(--border);
+    }
+
+    .code-block-header {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 6px 12px;
+      background: rgba(0,0,0,0.35);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .code-lang {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.68rem; letter-spacing: .08em;
+      color: var(--text-muted); text-transform: uppercase;
+    }
+
+    .copy-btn {
+      display: flex; align-items: center; gap: 5px;
+      font-size: 0.7rem; padding: 3px 10px;
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      background: transparent;
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.2s;
+      font-family: 'Inter', sans-serif;
+    }
+
+    .copy-btn:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .copy-btn.copied {
+      border-color: var(--success);
+      color: var(--success);
+    }
+
+    .copy-btn svg { width: 11px; height: 11px; }
+
+    .code-block-wrap pre {
+      margin: 0 !important;
+      border-radius: 0 !important;
+      max-height: 380px;
+      overflow: auto;
+    }
+
+    .code-block-wrap pre code {
+      font-family: 'JetBrains Mono', monospace !important;
+      font-size: 0.8rem !important;
+      line-height: 1.6 !important;
+    }
+
+    /* ─── TYPING INDICATOR ────────────────────────────────────────── */
+    .typing-row {
+      display: flex; gap: 10px; align-items: flex-start;
+      animation: slide-in 0.3s ease;
+    }
+
+    .typing-bubble {
+      padding: 14px 18px;
+      background: var(--bg-msg-agent);
+      border: 1px solid var(--border);
+      border-radius: 16px; border-top-left-radius: 4px;
+      display: flex; align-items: center; gap: 5px;
+    }
+
+    .typing-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--accent);
+      animation: bounce 1.2s infinite;
+    }
+
+    .typing-dot:nth-child(2) { animation-delay: .2s; }
+    .typing-dot:nth-child(3) { animation-delay: .4s; }
+
+    @keyframes bounce {
+      0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
+      40%            { transform: translateY(-6px); opacity: 1; }
+    }
+
+    /* ─── INPUT AREA ──────────────────────────────────────────────── */
+    .input-area {
+      padding: 12px;
+      border-top: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .input-row {
+      display: flex; gap: 8px; align-items: flex-end;
+    }
+
+    .input-wrap {
+      flex: 1; position: relative;
+    }
+
+    #userInput {
+      width: 100%;
+      background: var(--glass-light);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px 42px 12px 14px;
+      color: var(--text-primary);
+      font-family: 'Inter', sans-serif;
+      font-size: 0.875rem;
+      resize: none;
+      outline: none;
+      transition: border-color 0.2s;
+      line-height: 1.5;
+      max-height: 120px;
+      overflow-y: auto;
+    }
+
+    #userInput::placeholder { color: var(--text-muted); }
+
+    #userInput:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-glow);
+    }
+
+    .upload-btn {
+      position: absolute; right: 10px; bottom: 10px;
+      width: 26px; height: 26px;
+      display: flex; align-items: center; justify-content: center;
+      color: var(--text-muted);
+      cursor: pointer; transition: color 0.2s;
+    }
+    .upload-btn:hover { color: var(--accent); }
+    .upload-btn svg { width: 15px; height: 15px; }
+
+    .send-btn {
+      width: 44px; height: 44px; flex-shrink: 0;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      border: none; border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+      box-shadow: 0 0 20px var(--accent-glow);
+      transition: all 0.2s;
+    }
+
+    .send-btn:hover {
+      transform: scale(1.05);
+      box-shadow: 0 0 30px var(--accent-glow);
+    }
+
+    .send-btn:active { transform: scale(0.97); }
+    .send-btn svg { width: 18px; height: 18px; color: white; }
+
+    .send-btn:disabled {
+      opacity: 0.5; cursor: not-allowed; transform: none;
+    }
+
+    /* ─── DRAG DROP OVERLAY ───────────────────────────────────────── */
+    .drop-overlay {
+      position: absolute; inset: 0;
+      background: rgba(99,102,241,0.15);
+      backdrop-filter: blur(4px);
+      border: 2px dashed var(--accent);
+      border-radius: var(--radius);
+      display: none; align-items: center; justify-content: center;
+      flex-direction: column; gap: 10px;
+      z-index: 50;
+      font-size: 0.9rem; color: var(--accent);
+      font-weight: 500;
+    }
+
+    .drop-overlay.active { display: flex; }
+    .drop-overlay svg { width: 40px; height: 40px; opacity: 0.8; }
+
+    #fileInput { display: none; }
+
+    /* ─── SIDEBAR ─────────────────────────────────────────────────── */
+    .sidebar-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+      z-index: 100;
+      opacity: 0; pointer-events: none;
+      transition: opacity 0.3s;
+      backdrop-filter: blur(2px);
+    }
+
+    .sidebar-overlay.open { opacity: 1; pointer-events: all; }
+
+    .sidebar {
+      position: fixed; right: 0; top: 0; bottom: 0;
+      width: min(var(--sidebar-w), 90vw);
+      background: var(--glass);
+      backdrop-filter: blur(30px);
+      -webkit-backdrop-filter: blur(30px);
+      border-left: 1px solid var(--border);
+      z-index: 101;
+      display: flex; flex-direction: column;
+      transform: translateX(100%);
+      transition: transform 0.35s cubic-bezier(0.4,0,0.2,1);
+      box-shadow: -20px 0 60px rgba(0,0,0,0.4);
+    }
+
+    .sidebar.open { transform: translateX(0); }
+
+    .sidebar-header {
+      padding: 18px 16px 12px;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+      flex-shrink: 0;
+    }
+
+    .sidebar-title {
+      font-weight: 600; font-size: 0.95rem;
+      display: flex; align-items: center; gap: 8px;
+    }
+
+    .sidebar-title svg { width: 16px; height: 16px; color: var(--accent); }
+
+    .sidebar-body {
+      flex: 1; overflow-y: auto; padding: 12px;
+    }
+
+    .sidebar-body::-webkit-scrollbar { width: 3px; }
+    .sidebar-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+    .repo-card {
+      padding: 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      margin-bottom: 8px;
+      background: var(--glass-light);
+      cursor: pointer;
+      transition: all 0.2s;
+      position: relative;
+    }
+
+    .repo-card:hover {
+      border-color: var(--border-hover);
+      background: rgba(99,102,241,0.06);
+      transform: translateY(-1px);
+    }
+
+    .repo-card-name {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.8rem; font-weight: 500;
+      color: var(--accent);
+      margin-bottom: 4px;
+      display: flex; align-items: center; gap: 6px;
+    }
+
+    .repo-card-meta {
+      font-size: 0.7rem; color: var(--text-muted);
+      display: flex; align-items: center; gap: 12px;
+    }
+
+    .repo-card-desc {
+      font-size: 0.73rem; color: var(--text-secondary);
+      margin: 4px 0;
+      display: -webkit-box;
+      -webkit-line-clamp: 1;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .live-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--success);
+      display: inline-block;
+      box-shadow: 0 0 5px var(--success);
+      animation: pulse-dot 2s infinite;
+    }
+
+    .repo-actions {
+      display: flex; gap: 6px; margin-top: 8px;
+    }
+
+    .repo-btn {
+      font-size: 0.68rem; padding: 4px 10px;
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      background: transparent;
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex; align-items: center; gap: 4px;
+      font-family: 'Inter', sans-serif;
+    }
+
+    .repo-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .repo-btn.pages:hover { border-color: var(--success); color: var(--success); }
+    .repo-btn svg { width: 10px; height: 10px; }
+
+    .sidebar-loading {
+      display: flex; flex-direction: column; gap: 8px; padding: 8px 0;
+    }
+
+    .skel {
+      height: 72px; border-radius: var(--radius-sm);
+      background: var(--glass-light);
+      animation: shimmer 1.4s infinite linear;
+      background-size: 200% 100%;
+      background-image: linear-gradient(90deg,
+        var(--glass-light) 25%,
+        rgba(255,255,255,0.06) 50%,
+        var(--glass-light) 75%);
+    }
+
+    @keyframes shimmer {
+      from { background-position: -200% 0; }
+      to   { background-position: 200% 0; }
+    }
+
+    /* ─── FILE PREVIEW MODAL ──────────────────────────────────────── */
+    .modal-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.7);
+      backdrop-filter: blur(8px);
+      z-index: 200;
+      display: flex; align-items: center; justify-content: center;
+      padding: 20px;
+      opacity: 0; pointer-events: none;
+      transition: opacity 0.2s;
+    }
+
+    .modal-overlay.open { opacity: 1; pointer-events: all; }
+
+    .modal {
+      width: 100%; max-width: 680px;
+      max-height: 80vh;
+      background: var(--glass);
+      backdrop-filter: blur(30px);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow-lg);
+      display: flex; flex-direction: column;
+      overflow: hidden;
+      transform: scale(0.96);
+      transition: transform 0.25s cubic-bezier(0.4,0,0.2,1);
+    }
+
+    .modal-overlay.open .modal { transform: scale(1); }
+
+    .modal-header {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+      flex-shrink: 0;
+    }
+
+    .modal-title {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem; font-weight: 500;
+      color: var(--accent);
+      display: flex; align-items: center; gap: 8px;
+    }
+
+    .modal-title svg { width: 14px; height: 14px; }
+
+    .modal-body {
+      flex: 1; overflow: auto;
+    }
+
+    .modal-body pre {
+      margin: 0 !important;
+      border-radius: 0 !important;
+      min-height: 200px;
+    }
+
+    .modal-body pre code {
+      font-family: 'JetBrains Mono', monospace !important;
+      font-size: 0.8rem !important;
+      line-height: 1.6 !important;
+    }
+
+    /* ─── HISTORY DIVIDER ─────────────────────────────────────────── */
+    .history-divider {
+      display: flex; align-items: center; gap: 10px;
+      margin: 8px 0;
+    }
+
+    .history-divider span {
+      font-size: 0.65rem; color: var(--text-muted); white-space: nowrap;
+    }
+
+    .history-divider::before, .history-divider::after {
+      content: ''; flex: 1; height: 1px;
+      background: var(--border);
+    }
+
+    /* ─── CHAR COUNT ──────────────────────────────────────────────── */
+    .input-hint {
+      font-size: 0.65rem; color: var(--text-muted);
+      padding: 4px 2px 0;
+      display: flex; justify-content: space-between;
+    }
+
+    /* ─── CLEAR HISTORY BTN ───────────────────────────────────────── */
+    .clear-history-btn {
+      font-size: 0.68rem; padding: 4px 10px;
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      background: transparent;
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all 0.2s;
+      font-family: 'Inter', sans-serif;
+    }
+
+    .clear-history-btn:hover { border-color: var(--danger); color: var(--danger); }
+
+    /* ─── LIGHT THEME OVERRIDES ───────────────────────────────────── */
+    [data-theme="light"] .hljs { background: #f8fafc !important; }
+    [data-theme="light"] .code-block-header { background: rgba(0,0,0,0.06); }
+
+    /* ─── MOBILE ──────────────────────────────────────────────────── */
+    @media (max-width: 600px) {
+      .app { padding: 0 8px; }
+      .bubble { max-width: 88%; }
+      .brand-name { font-size: 0.9rem; }
+    }
+  </style>
 </head>
 <body>
-    <div class="chat">
-        <h1>🤖 My GitHub Agent</h1>
-        <div id="messages"></div>
-        <input type="text" id="userInput" placeholder="Bol bhai kya banana hai... 'calculator-app repo bana'" onkeypress="if(event.key==='Enter') sendMsg()">
-        <button onclick="sendMsg()">Send</button>
+
+<canvas id="bg-canvas"></canvas>
+
+<!-- Sidebar Overlay -->
+<div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
+
+<!-- Sidebar -->
+<div class="sidebar" id="sidebar">
+  <div class="sidebar-header">
+    <div class="sidebar-title">
+      <i data-lucide="github"></i>
+      My Repositories
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <button class="clear-history-btn" onclick="refreshRepos()" title="Refresh">↻ Refresh</button>
+      <button class="icon-btn" onclick="closeSidebar()" style="width:28px;height:28px;">
+        <i data-lucide="x"></i>
+      </button>
+    </div>
+  </div>
+  <div class="sidebar-body" id="repoList">
+    <div class="sidebar-loading">
+      <div class="skel"></div>
+      <div class="skel"></div>
+      <div class="skel"></div>
+    </div>
+  </div>
+</div>
+
+<!-- File Preview Modal -->
+<div class="modal-overlay" id="fileModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">
+        <i data-lucide="file-code"></i>
+        <span id="modalFileName">file.html</span>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="copy-btn" id="modalCopyBtn" onclick="copyModalContent()">
+          <i data-lucide="copy"></i> Copy
+        </button>
+        <button class="icon-btn" onclick="closeModal()" style="width:28px;height:28px;">
+          <i data-lucide="x"></i>
+        </button>
+      </div>
+    </div>
+    <div class="modal-body">
+      <pre><code id="modalCode" class="hljs"></code></pre>
+    </div>
+  </div>
+</div>
+
+<!-- Hidden File Input -->
+<input type="file" id="fileInput" accept=".zip,.html,.css,.js,.py,.txt,.md,.json,.png,.jpg,.jpeg,.gif" />
+
+<!-- App -->
+<div class="app">
+  <header class="header">
+    <div class="header-brand">
+      <div class="brand-icon">
+        <i data-lucide="bot"></i>
+      </div>
+      <div>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span class="brand-name">GitHub Agent</span>
+          <span class="brand-badge">v2.0</span>
+        </div>
+      </div>
+    </div>
+    <div class="header-actions">
+      <button class="icon-btn" id="themeBtn" title="Toggle theme" onclick="toggleTheme()">
+        <i data-lucide="sun"></i>
+      </button>
+      <button class="icon-btn" title="Clear history" onclick="confirmClear()">
+        <i data-lucide="trash-2"></i>
+      </button>
+      <button class="icon-btn" title="My Repos" onclick="openSidebar()">
+        <i data-lucide="layout-grid"></i>
+      </button>
+    </div>
+  </header>
+
+  <div class="status-bar">
+    <div class="status-dot"></div>
+    <span class="status-text">Connected · Llama 3.1 70B · PyGithub</span>
+  </div>
+
+  <div class="chat-wrap" id="chatWrap">
+    <!-- Drop Overlay -->
+    <div class="drop-overlay" id="dropOverlay">
+      <i data-lucide="upload-cloud"></i>
+      <span>Drop file to mention in chat</span>
     </div>
 
-    <script>
-        async function sendMsg() {
-            const input = document.getElementById('userInput');
-            const msg = input.value;
-            if (!msg) return;
-            
-            document.getElementById('messages').innerHTML += `<div class="msg user"><b>You:</b> ${msg}</div>`;
-            input.value = '';
-            
-            const res = await fetch('/chat', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({message: msg})
-            });
-            const data = await res.json();
-            
-            document.getElementById('messages').innerHTML += `<div class="msg"><b>Agent:</b> ${data.reply}</div>`;
+    <div id="messages">
+      <!-- Filled by JS -->
+    </div>
+
+    <div class="input-area">
+      <div class="input-row">
+        <div class="input-wrap">
+          <textarea
+            id="userInput"
+            rows="1"
+            placeholder="Bol bhai kya karna hai… e.g. 'create calculator-app repo'"
+            autocomplete="off"
+            spellcheck="false"
+          ></textarea>
+          <div class="upload-btn" title="Attach file" onclick="document.getElementById('fileInput').click()">
+            <i data-lucide="paperclip"></i>
+          </div>
+        </div>
+        <button class="send-btn" id="sendBtn" onclick="sendMsg()">
+          <i data-lucide="send"></i>
+        </button>
+      </div>
+      <div class="input-hint">
+        <span>Press <kbd style="font-size:0.6rem;padding:1px 4px;border:1px solid var(--border);border-radius:3px;">Enter</kbd> to send · <kbd style="font-size:0.6rem;padding:1px 4px;border:1px solid var(--border);border-radius:3px;">Shift+Enter</kbd> for newline</span>
+        <span id="charCount">0 / 2000</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ═══════════════════════════════════════════════════════════
+   ANIMATED BACKGROUND CANVAS
+═══════════════════════════════════════════════════════════ */
+(function initCanvas() {
+  const canvas = document.getElementById('bg-canvas');
+  const ctx = canvas.getContext('2d');
+  let W, H, nodes, animFrame;
+
+  function resize() {
+    W = canvas.width  = window.innerWidth;
+    H = canvas.height = window.innerHeight;
+  }
+
+  function createNodes() {
+    const count = Math.floor((W * H) / 18000);
+    nodes = Array.from({ length: count }, () => ({
+      x: Math.random() * W,
+      y: Math.random() * H,
+      vx: (Math.random() - 0.5) * 0.25,
+      vy: (Math.random() - 0.5) * 0.25,
+      r: Math.random() * 1.5 + 0.5,
+    }));
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, W, H);
+    const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
+    const nodeColor   = isDark ? 'rgba(99,102,241,0.5)' : 'rgba(99,102,241,0.3)';
+    const lineColor   = isDark ? 'rgba(99,102,241,0.08)' : 'rgba(99,102,241,0.06)';
+
+    nodes.forEach(n => {
+      n.x += n.vx; n.y += n.vy;
+      if (n.x < 0 || n.x > W) n.vx *= -1;
+      if (n.y < 0 || n.y > H) n.vy *= -1;
+    });
+
+    for (let i = 0; i < nodes.length; i++) {
+      for (let j = i + 1; j < nodes.length; j++) {
+        const dx = nodes[i].x - nodes[j].x;
+        const dy = nodes[i].y - nodes[j].y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < 160) {
+          ctx.beginPath();
+          ctx.moveTo(nodes[i].x, nodes[i].y);
+          ctx.lineTo(nodes[j].x, nodes[j].y);
+          ctx.strokeStyle = lineColor;
+          ctx.lineWidth = 0.6;
+          ctx.globalAlpha = 1 - dist / 160;
+          ctx.stroke();
+          ctx.globalAlpha = 1;
         }
-    </script>
+      }
+    }
+
+    nodes.forEach(n => {
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
+      ctx.fillStyle = nodeColor;
+      ctx.fill();
+    });
+
+    animFrame = requestAnimationFrame(draw);
+  }
+
+  resize(); createNodes(); draw();
+  window.addEventListener('resize', () => { resize(); createNodes(); });
+})();
+
+
+/* ═══════════════════════════════════════════════════════════
+   MARKED.JS CONFIG
+═══════════════════════════════════════════════════════════ */
+marked.setOptions({
+  breaks: true,
+  gfm: true,
+});
+
+const renderer = new marked.Renderer();
+renderer.link = (href, title, text) => {
+  return `<a href="${href}" target="_blank" rel="noopener noreferrer" title="${title || ''}">${text}</a>`;
+};
+renderer.code = (code, lang) => {
+  const validLang = lang && hljs.getLanguage(lang) ? lang : 'plaintext';
+  const highlighted = hljs.highlight(code, { language: validLang }).value;
+  const id = 'cb-' + Math.random().toString(36).slice(2, 8);
+  return `
+    <div class="code-block-wrap">
+      <div class="code-block-header">
+        <span class="code-lang">${lang || 'code'}</span>
+        <button class="copy-btn" id="${id}" onclick="copyCode('${id}')">
+          <i data-lucide="copy"></i> Copy
+        </button>
+      </div>
+      <pre><code class="hljs language-${validLang}">${highlighted}</code></pre>
+    </div>`;
+};
+marked.use({ renderer });
+
+
+/* ═══════════════════════════════════════════════════════════
+   STATE & STORAGE
+═══════════════════════════════════════════════════════════ */
+const STORAGE_KEY = 'gh_agent_history_v2';
+
+let chatHistory = [];
+
+function loadHistory() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      chatHistory = JSON.parse(raw);
+      if (chatHistory.length > 0) {
+        renderHistoryDivider();
+        chatHistory.forEach(m => renderMessage(m.role, m.text, m.time, false));
+        scrollToBottom();
+        return;
+      }
+    }
+  } catch (e) { chatHistory = []; }
+  renderEmptyState();
+}
+
+function saveHistory() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(chatHistory.slice(-80)));
+  } catch(e) {}
+}
+
+function addToHistory(role, text) {
+  chatHistory.push({ role, text, time: Date.now() });
+  saveHistory();
+}
+
+function confirmClear() {
+  if (chatHistory.length === 0) {
+    showToast('No history to clear.', 'info'); return;
+  }
+  if (confirm('Clear all chat history? This cannot be undone.')) {
+    clearHistory();
+  }
+}
+
+function clearHistory() {
+  chatHistory = [];
+  localStorage.removeItem(STORAGE_KEY);
+  document.getElementById('messages').innerHTML = '';
+  renderEmptyState();
+  showToast('Chat history cleared.', 'success');
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   EMPTY STATE
+═══════════════════════════════════════════════════════════ */
+const QUICK_CMDS = [
+  'create my-portfolio repo',
+  'add index.html with hello world to my-portfolio',
+  'list my repos',
+  'delete test-repo',
+];
+
+function renderEmptyState() {
+  const msgs = document.getElementById('messages');
+  msgs.innerHTML = `
+    <div class="empty-state" id="emptyState">
+      <div class="empty-icon"><i data-lucide="terminal-square"></i></div>
+      <h2>GitHub Agent</h2>
+      <p>Tell me what to build. I'll create repos, write files, and push to GitHub — all from a single message.</p>
+      <div class="quick-cmds">
+        ${QUICK_CMDS.map(c => `<div class="quick-cmd" onclick="useQuickCmd(this)">${c}</div>`).join('')}
+      </div>
+    </div>`;
+  lucide.createIcons();
+}
+
+function useQuickCmd(el) {
+  const inp = document.getElementById('userInput');
+  inp.value = el.textContent;
+  inp.focus();
+  updateCharCount();
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   MESSAGE RENDERING
+═══════════════════════════════════════════════════════════ */
+function renderHistoryDivider() {
+  const msgs = document.getElementById('messages');
+  msgs.innerHTML += `
+    <div class="history-divider">
+      <span>Previous session</span>
+    </div>`;
+}
+
+function renderMessage(role, text, time, save = true) {
+  const empty = document.getElementById('emptyState');
+  if (empty) empty.remove();
+
+  if (save) addToHistory(role, text);
+
+  const msgs = document.getElementById('messages');
+  const isUser = role === 'user';
+  const timeStr = formatTime(time || Date.now());
+
+  let content = '';
+  if (isUser) {
+    content = escapeHtml(text).replace(/\n/g, '<br>');
+  } else {
+    content = marked.parse(text);
+  }
+
+  const initials = isUser ? 'U' : '🤖';
+  const avatarClass = isUser ? 'user-av' : 'agent-av';
+
+  const div = document.createElement('div');
+  div.className = `msg-row ${isUser ? 'user' : 'agent'}`;
+  div.innerHTML = `
+    <div class="avatar ${avatarClass}">${initials}</div>
+    <div>
+      <div class="bubble">${content}</div>
+      <div class="msg-meta">${timeStr}</div>
+    </div>`;
+
+  msgs.appendChild(div);
+  lucide.createIcons();
+  scrollToBottom();
+}
+
+function showTyping() {
+  const msgs = document.getElementById('messages');
+  const div = document.createElement('div');
+  div.id = 'typingRow';
+  div.className = 'typing-row';
+  div.innerHTML = `
+    <div class="avatar agent-av">🤖</div>
+    <div class="typing-bubble">
+      <div class="typing-dot"></div>
+      <div class="typing-dot"></div>
+      <div class="typing-dot"></div>
+    </div>`;
+  msgs.appendChild(div);
+  scrollToBottom();
+}
+
+function hideTyping() {
+  const t = document.getElementById('typingRow');
+  if (t) t.remove();
+}
+
+function scrollToBottom() {
+  const msgs = document.getElementById('messages');
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function escapeHtml(s) {
+  return s
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;');
+}
+
+function formatTime(ts) {
+  const d = new Date(ts);
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   SEND MESSAGE
+═══════════════════════════════════════════════════════════ */
+const sendBtn = document.getElementById('sendBtn');
+const userInput = document.getElementById('userInput');
+
+userInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendMsg();
+  }
+});
+
+userInput.addEventListener('input', () => {
+  userInput.style.height = 'auto';
+  userInput.style.height = Math.min(userInput.scrollHeight, 120) + 'px';
+  updateCharCount();
+});
+
+function updateCharCount() {
+  const len = userInput.value.length;
+  const el = document.getElementById('charCount');
+  el.textContent = `${len} / 2000`;
+  el.style.color = len > 1800 ? 'var(--warning)' : 'var(--text-muted)';
+}
+
+let isLoading = false;
+let pendingFileInfo = null;
+
+async function sendMsg() {
+  const rawMsg = userInput.value.trim();
+  if (!rawMsg || isLoading) return;
+
+  let msg = rawMsg;
+  if (pendingFileInfo) {
+    msg = `[File: ${pendingFileInfo.name} (${pendingFileInfo.type})] ${rawMsg}`;
+    pendingFileInfo = null;
+    updateInputPlaceholder();
+  }
+
+  isLoading = true;
+  sendBtn.disabled = true;
+  userInput.value = '';
+  userInput.style.height = 'auto';
+  updateCharCount();
+
+  renderMessage('user', rawMsg);
+  showTyping();
+
+  try {
+    const res = await fetch('/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: msg }),
+    });
+
+    if (!res.ok) throw new Error(`Server error ${res.status}`);
+    const data = await res.json();
+
+    hideTyping();
+    const reply = data.reply || 'No response.';
+    renderMessage('agent', reply);
+
+    // Auto-detect file creation and offer preview
+    if (reply.includes('github.com') && (reply.includes('/blob/') || reply.includes('ban gayi'))) {
+      detectAndOfferPreview(reply);
+    }
+
+    // Success/error toast
+    if (reply.toLowerCase().includes('error') || reply.toLowerCase().includes('nahi')) {
+      showToast('Agent encountered an issue.', 'error');
+    } else if (reply.includes('✅')) {
+      showToast('Action completed!', 'success');
+    }
+
+  } catch (err) {
+    hideTyping();
+    renderMessage('agent', `⚠️ **Connection error:** ${err.message}\n\nServer se connect nahi ho pa raha. Check your deployment.`);
+    showToast('Failed to reach server.', 'error');
+  } finally {
+    isLoading = false;
+    sendBtn.disabled = false;
+    userInput.focus();
+  }
+}
+
+function detectAndOfferPreview(reply) {
+  const urlMatch = reply.match(/https:\/\/github\.com\/[^\s)]+\/blob\/main\/([^\s)]+)/);
+  if (urlMatch) {
+    const filename = urlMatch[1];
+    const ext = filename.split('.').pop() || 'txt';
+    setTimeout(() => {
+      const msgs = document.getElementById('messages');
+      const last = msgs.lastElementChild;
+      if (last) {
+        const previewBtn = document.createElement('div');
+        previewBtn.style.cssText = 'margin-top:8px;';
+        previewBtn.innerHTML = `
+          <button class="repo-btn" onclick="openFilePreview('${filename}', '// File preview not available in this view.\\n// Check GitHub link above.')">
+            <i data-lucide="eye"></i> Preview File
+          </button>`;
+        const bubble = last.querySelector('.bubble');
+        if (bubble) { bubble.appendChild(previewBtn); lucide.createIcons(); }
+      }
+    }, 200);
+  }
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   COPY CODE
+═══════════════════════════════════════════════════════════ */
+function copyCode(id) {
+  const btn = document.getElementById(id);
+  if (!btn) return;
+  const wrap = btn.closest('.code-block-wrap');
+  const code = wrap ? wrap.querySelector('pre code') : null;
+  if (!code) return;
+
+  navigator.clipboard.writeText(code.innerText).then(() => {
+    btn.innerHTML = '<i data-lucide="check"></i> Copied!';
+    btn.classList.add('copied');
+    lucide.createIcons();
+    setTimeout(() => {
+      btn.innerHTML = '<i data-lucide="copy"></i> Copy';
+      btn.classList.remove('copied');
+      lucide.createIcons();
+    }, 2000);
+  }).catch(() => showToast('Copy failed.', 'error'));
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   FILE UPLOAD / DRAG & DROP
+═══════════════════════════════════════════════════════════ */
+const chatWrap = document.getElementById('chatWrap');
+const dropOverlay = document.getElementById('dropOverlay');
+const fileInput = document.getElementById('fileInput');
+
+chatWrap.addEventListener('dragenter', e => {
+  e.preventDefault(); dropOverlay.classList.add('active');
+});
+chatWrap.addEventListener('dragleave', e => {
+  if (!chatWrap.contains(e.relatedTarget)) dropOverlay.classList.remove('active');
+});
+chatWrap.addEventListener('dragover', e => e.preventDefault());
+chatWrap.addEventListener('drop', e => {
+  e.preventDefault(); dropOverlay.classList.remove('active');
+  const f = e.dataTransfer.files[0];
+  if (f) handleFileSelect(f);
+});
+
+fileInput.addEventListener('change', () => {
+  const f = fileInput.files[0];
+  if (f) handleFileSelect(f);
+  fileInput.value = '';
+});
+
+function handleFileSelect(file) {
+  const MAX = 2 * 1024 * 1024; // 2 MB
+  if (file.size > MAX) {
+    showToast('File too large (max 2MB).', 'error'); return;
+  }
+  pendingFileInfo = { name: file.name, type: file.type || 'unknown' };
+
+  const reader = new FileReader();
+  reader.onload = () => {
+    pendingFileInfo.dataUrl = reader.result;
+    updateInputPlaceholder();
+    showToast(`📎 "${file.name}" attached. Type a message to use it.`, 'info');
+  };
+  reader.onerror = () => showToast('File read failed.', 'error');
+  reader.readAsDataURL(file);
+}
+
+function updateInputPlaceholder() {
+  userInput.placeholder = pendingFileInfo
+    ? `📎 ${pendingFileInfo.name} attached — type your instruction…`
+    : 'Bol bhai kya karna hai… e.g. \'create calculator-app repo\'';
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   SIDEBAR — MY REPOS
+═══════════════════════════════════════════════════════════ */
+let reposLoaded = false;
+
+function openSidebar() {
+  document.getElementById('sidebar').classList.add('open');
+  document.getElementById('sidebarOverlay').classList.add('open');
+  if (!reposLoaded) fetchRepos();
+}
+
+function closeSidebar() {
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebarOverlay').classList.remove('open');
+}
+
+function refreshRepos() {
+  reposLoaded = false;
+  document.getElementById('repoList').innerHTML = `
+    <div class="sidebar-loading">
+      <div class="skel"></div><div class="skel"></div><div class="skel"></div>
+    </div>`;
+  fetchRepos();
+}
+
+async function fetchRepos() {
+  try {
+    const res = await fetch('/repos');
+    if (!res.ok) throw new Error(`Status ${res.status}`);
+    const data = await res.json();
+    reposLoaded = true;
+    renderRepos(data.repos || []);
+  } catch(e) {
+    document.getElementById('repoList').innerHTML = `
+      <div style="padding:20px;text-align:center;color:var(--text-muted);font-size:0.8rem;">
+        <div style="margin-bottom:8px;">⚠️ Could not fetch repos.</div>
+        <div style="font-size:0.7rem;">${e.message}</div>
+      </div>`;
+  }
+}
+
+function renderRepos(repos) {
+  const list = document.getElementById('repoList');
+  if (!repos.length) {
+    list.innerHTML = `<div style="padding:20px;text-align:center;color:var(--text-muted);font-size:0.82rem;">No repos found. Ask the agent to create one!</div>`;
+    return;
+  }
+
+  const now = Date.now();
+  list.innerHTML = repos.map(r => {
+    const updatedMs = new Date(r.updated_at).getTime();
+    const isRecent = (now - updatedMs) < 24 * 3600 * 1000;
+    const relTime = relativeTime(updatedMs);
+    const isHtml = r.name.includes('html') || (r.description || '').toLowerCase().includes('html');
+    return `
+      <div class="repo-card" onclick="openRepoLink('${r.html_url}')">
+        <div class="repo-card-name">
+          <i data-lucide="git-branch" style="width:12px;height:12px;color:var(--text-muted);flex-shrink:0;"></i>
+          ${escapeHtml(r.name)}
+          ${isRecent ? '<span class="live-dot" title="Updated recently"></span>' : ''}
+        </div>
+        ${r.description ? `<div class="repo-card-desc">${escapeHtml(r.description)}</div>` : ''}
+        <div class="repo-card-meta">
+          <span>Updated ${relTime}</span>
+          ${r.language ? `<span>· ${r.language}</span>` : ''}
+          ${r.private ? '<span>· 🔒 Private</span>' : ''}
+        </div>
+        <div class="repo-actions" onclick="event.stopPropagation()">
+          <button class="repo-btn" onclick="openRepoLink('${r.html_url}')">
+            <i data-lucide="external-link"></i> Open
+          </button>
+          <button class="repo-btn" onclick="askAgentAboutRepo('${r.name}')">
+            <i data-lucide="message-square"></i> Ask Agent
+          </button>
+          ${isHtml ? `<button class="repo-btn pages" onclick="deployToPages('${r.name}')">
+            <i data-lucide="rocket"></i> Deploy
+          </button>` : ''}
+        </div>
+      </div>`;
+  }).join('');
+  lucide.createIcons();
+}
+
+function openRepoLink(url) {
+  window.open(url, '_blank', 'noopener');
+}
+
+function askAgentAboutRepo(repoName) {
+  closeSidebar();
+  userInput.value = `Tell me about my repo: ${repoName}`;
+  updateCharCount();
+  userInput.focus();
+}
+
+async function deployToPages(repoName) {
+  showToast(`Deploying "${repoName}" to GitHub Pages…`, 'info');
+  try {
+    const res = await fetch('/deploy-pages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ repo: repoName }),
+    });
+    if (!res.ok) throw new Error('Deploy failed');
+    const data = await res.json();
+    showToast(`✅ ${data.message || 'Pages deployed!'}`, 'success');
+  } catch(e) {
+    // Fallback: ask agent
+    closeSidebar();
+    userInput.value = `Enable GitHub Pages for ${repoName} repo (branch: main, folder: root)`;
+    updateCharCount();
+    showToast('Asking agent to deploy to Pages…', 'info');
+    userInput.focus();
+  }
+}
+
+function relativeTime(ms) {
+  const sec = Math.floor((Date.now() - ms) / 1000);
+  if (sec < 60)  return 'just now';
+  if (sec < 3600) return `${Math.floor(sec/60)}m ago`;
+  if (sec < 86400) return `${Math.floor(sec/3600)}h ago`;
+  if (sec < 2592000) return `${Math.floor(sec/86400)}d ago`;
+  return `${Math.floor(sec/2592000)}mo ago`;
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   FILE PREVIEW MODAL
+═══════════════════════════════════════════════════════════ */
+let modalContent = '';
+
+function openFilePreview(filename, code) {
+  modalContent = code;
+  document.getElementById('modalFileName').textContent = filename;
+  const ext = filename.split('.').pop() || 'txt';
+  const validLang = hljs.getLanguage(ext) ? ext : 'plaintext';
+  const highlighted = hljs.highlight(code, { language: validLang }).value;
+  document.getElementById('modalCode').innerHTML = highlighted;
+  document.getElementById('fileModal').classList.add('open');
+}
+
+function closeModal() {
+  document.getElementById('fileModal').classList.remove('open');
+}
+
+function copyModalContent() {
+  navigator.clipboard.writeText(modalContent).then(() => {
+    const btn = document.getElementById('modalCopyBtn');
+    btn.innerHTML = '<i data-lucide="check"></i> Copied!';
+    btn.classList.add('copied');
+    lucide.createIcons();
+    setTimeout(() => {
+      btn.innerHTML = '<i data-lucide="copy"></i> Copy';
+      btn.classList.remove('copied');
+      lucide.createIcons();
+    }, 2000);
+  });
+}
+
+document.getElementById('fileModal').addEventListener('click', function(e) {
+  if (e.target === this) closeModal();
+});
+
+
+/* ═══════════════════════════════════════════════════════════
+   THEME TOGGLE
+═══════════════════════════════════════════════════════════ */
+const THEME_KEY = 'gh_agent_theme';
+
+function initTheme() {
+  const saved = localStorage.getItem(THEME_KEY) || 'dark';
+  document.documentElement.setAttribute('data-theme', saved);
+  updateThemeBtn(saved);
+}
+
+function toggleTheme() {
+  const current = document.documentElement.getAttribute('data-theme');
+  const next = current === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  localStorage.setItem(THEME_KEY, next);
+  updateThemeBtn(next);
+
+  // Switch hljs theme
+  const link = document.getElementById('hljs-theme');
+  link.href = next === 'light'
+    ? 'https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/github.min.css'
+    : 'https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/github-dark.min.css';
+}
+
+function updateThemeBtn(theme) {
+  const btn = document.getElementById('themeBtn');
+  btn.innerHTML = theme === 'dark'
+    ? '<i data-lucide="sun"></i>'
+    : '<i data-lucide="moon"></i>';
+  lucide.createIcons();
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   TOAST NOTIFICATIONS
+═══════════════════════════════════════════════════════════ */
+function showToast(msg, type = 'info') {
+  const colors = {
+    success: 'linear-gradient(135deg, #10b981, #059669)',
+    error:   'linear-gradient(135deg, #ef4444, #dc2626)',
+    warning: 'linear-gradient(135deg, #f59e0b, #d97706)',
+    info:    'linear-gradient(135deg, #6366f1, #8b5cf6)',
+  };
+
+  Toastify({
+    text: msg,
+    duration: 3500,
+    gravity: 'bottom',
+    position: 'right',
+    stopOnFocus: true,
+    style: {
+      background: colors[type] || colors.info,
+      borderRadius: '10px',
+      fontFamily: 'Inter, sans-serif',
+      fontSize: '0.82rem',
+      fontWeight: '500',
+      padding: '10px 16px',
+      boxShadow: '0 10px 30px rgba(0,0,0,0.35)',
+      maxWidth: '320px',
+    },
+  }).showToast();
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   INIT
+═══════════════════════════════════════════════════════════ */
+(function init() {
+  initTheme();
+  lucide.createIcons();
+  loadHistory();
+  userInput.focus();
+})();
+</script>
 </body>
 </html>
