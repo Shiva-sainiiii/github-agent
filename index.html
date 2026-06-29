@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>My GitHub Agent</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body { font-family: Arial; background: #0d1117; color: #c9d1d9; margin: 0; padding: 20px; }
+        .chat { max-width: 600px; margin: auto; }
+        .msg { background: #161b22; padding: 15px; margin: 10px 0; border-radius: 8px; border: 1px solid #30363d; }
+        .user { background: #1f6feb; color: white; }
+        input { width: 70%; padding: 12px; background: #0d1117; border: 1px solid #30363d; color: white; border-radius: 6px; }
+        button { padding: 12px 20px; background: #238636; color: white; border: none; border-radius: 6px; }
+        h1 { text-align: center; color: #58a6ff; }
+    </style>
+</head>
+<body>
+    <div class="chat">
+        <h1>🤖 My GitHub Agent</h1>
+        <div id="messages"></div>
+        <input type="text" id="userInput" placeholder="Bol bhai kya banana hai... 'calculator-app repo bana'" onkeypress="if(event.key==='Enter') sendMsg()">
+        <button onclick="sendMsg()">Send</button>
+    </div>
+
+    <script>
+        async function sendMsg() {
+            const input = document.getElementById('userInput');
+            const msg = input.value;
+            if (!msg) return;
+            
+            document.getElementById('messages').innerHTML += `<div class="msg user"><b>You:</b> ${msg}</div>`;
+            input.value = '';
+            
+            const res = await fetch('/chat', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({message: msg})
+            });
+            const data = await res.json();
+            
+            document.getElementById('messages').innerHTML += `<div class="msg"><b>Agent:</b> ${data.reply}</div>`;
+        }
+    </script>
+</body>
+</html>
