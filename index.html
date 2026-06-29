@@ -30,41 +30,41 @@
 
     :root {
       /* Dark theme */
-      --bg-base:      #060910;
-      --bg-panel:     rgba(13, 18, 30, 0.85);
-      --bg-msg-user:  rgba(99, 102, 241, 0.18);
-      --bg-msg-agent: rgba(255, 255, 255, 0.04);
-      --border:       rgba(255, 255, 255, 0.08);
-      --border-hover: rgba(99, 102, 241, 0.5);
-      --text-primary: #e2e8f0;
-      --text-secondary: #94a3b8;
-      --text-muted:   #475569;
-      --accent:       #6366f1;
-      --accent-glow:  rgba(99, 102, 241, 0.35);
-      --accent-2:     #8b5cf6;
-      --success:      #10b981;
-      --danger:       #ef4444;
-      --warning:      #f59e0b;
-      --glass:        rgba(13, 18, 30, 0.7);
-      --glass-light:  rgba(255,255,255,0.03);
+      --bg-base:      #0c0f1a;
+      --bg-panel:     rgba(17, 22, 38, 0.92);
+      --bg-msg-user:  rgba(99, 102, 241, 0.22);
+      --bg-msg-agent: rgba(255, 255, 255, 0.07);
+      --border:       rgba(255, 255, 255, 0.11);
+      --border-hover: rgba(99, 102, 241, 0.6);
+      --text-primary: #f0f4ff;
+      --text-secondary: #a8b5cc;
+      --text-muted:   #5a6a85;
+      --accent:       #7c7fff;
+      --accent-glow:  rgba(124, 127, 255, 0.4);
+      --accent-2:     #a78bfa;
+      --success:      #34d399;
+      --danger:       #f87171;
+      --warning:      #fbbf24;
+      --glass:        rgba(17, 22, 38, 0.88);
+      --glass-light:  rgba(255,255,255,0.06);
       --sidebar-w:    340px;
-      --shadow-lg:    0 25px 50px rgba(0,0,0,0.5);
-      --radius:       14px;
-      --radius-sm:    8px;
+      --shadow-lg:    0 25px 60px rgba(0,0,0,0.6);
+      --radius:       16px;
+      --radius-sm:    10px;
     }
 
     [data-theme="light"] {
-      --bg-base:      #f0f4ff;
-      --bg-panel:     rgba(255,255,255,0.85);
-      --bg-msg-user:  rgba(99,102,241,0.12);
-      --bg-msg-agent: rgba(0,0,0,0.03);
-      --border:       rgba(0,0,0,0.08);
-      --border-hover: rgba(99,102,241,0.4);
-      --text-primary: #1e293b;
-      --text-secondary: #475569;
-      --text-muted:   #94a3b8;
-      --glass:        rgba(255,255,255,0.7);
-      --glass-light:  rgba(255,255,255,0.5);
+      --bg-base:      #eef2ff;
+      --bg-panel:     rgba(255,255,255,0.90);
+      --bg-msg-user:  rgba(99,102,241,0.14);
+      --bg-msg-agent: rgba(0,0,0,0.04);
+      --border:       rgba(0,0,0,0.10);
+      --border-hover: rgba(99,102,241,0.45);
+      --text-primary: #1a1f36;
+      --text-secondary: #4a5568;
+      --text-muted:   #8898aa;
+      --glass:        rgba(255,255,255,0.80);
+      --glass-light:  rgba(255,255,255,0.60);
     }
 
     html, body {
@@ -135,21 +135,27 @@
     }
 
     .icon-btn {
-      width: 36px; height: 36px;
+      width: 38px; height: 38px;
       display: flex; align-items: center; justify-content: center;
-      border: 1px solid var(--border);
+      border: 1.5px solid rgba(255,255,255,0.13);
       border-radius: var(--radius-sm);
-      background: var(--glass-light);
+      background: rgba(255,255,255,0.07);
       backdrop-filter: blur(12px);
-      color: var(--text-secondary);
+      color: #a8b5cc;
       cursor: pointer;
       transition: all 0.2s;
     }
 
+    [data-theme="light"] .icon-btn {
+      border-color: rgba(0,0,0,0.12);
+      background: rgba(255,255,255,0.70);
+      color: #4a5568;
+    }
+
     .icon-btn:hover {
-      border-color: var(--border-hover);
-      color: var(--text-primary);
-      background: var(--glass);
+      border-color: var(--accent);
+      color: var(--accent);
+      background: rgba(124,127,255,0.12);
     }
 
     .icon-btn svg { width: 16px; height: 16px; }
@@ -157,13 +163,17 @@
     /* ─── STATUS BAR ──────────────────────────────────────────────── */
     .status-bar {
       display: flex; align-items: center; gap: 6px;
-      padding: 6px 12px;
-      background: var(--glass-light);
-      border: 1px solid var(--border);
+      padding: 7px 14px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.10);
       border-radius: var(--radius-sm);
       margin-bottom: 10px;
-      font-size: 0.72rem; color: var(--text-muted);
+      font-size: 0.73rem;
       flex-shrink: 0;
+    }
+    [data-theme="light"] .status-bar {
+      background: rgba(255,255,255,0.7);
+      border-color: rgba(0,0,0,0.09);
     }
 
     .status-dot {
@@ -184,13 +194,17 @@
     /* ─── CHAT AREA ───────────────────────────────────────────────── */
     .chat-wrap {
       flex: 1; overflow: hidden;
-      background: var(--bg-panel);
-      backdrop-filter: blur(24px);
-      -webkit-backdrop-filter: blur(24px);
-      border: 1px solid var(--border);
+      background: rgba(15, 20, 40, 0.90);
+      backdrop-filter: blur(32px);
+      -webkit-backdrop-filter: blur(32px);
+      border: 1px solid rgba(255,255,255,0.11);
       border-radius: var(--radius);
       display: flex; flex-direction: column;
-      box-shadow: var(--shadow-lg);
+      box-shadow: 0 8px 40px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.06);
+    }
+    [data-theme="light"] .chat-wrap {
+      background: rgba(255,255,255,0.90);
+      border-color: rgba(0,0,0,0.09);
     }
 
     #messages {
@@ -249,9 +263,14 @@
     .msg-row {
       display: flex; gap: 10px; align-items: flex-start;
       animation: slide-in 0.3s ease;
+      min-width: 0;
     }
 
     .msg-row.user { flex-direction: row-reverse; }
+
+    /* bubble wrapper div must not shrink badly on mobile */
+    .msg-row > div:last-child { min-width: 0; }
+    .msg-row.user > div:last-child { align-items: flex-end; display: flex; flex-direction: column; }
 
     @keyframes slide-in {
       from { opacity: 0; transform: translateY(10px); }
@@ -264,43 +283,55 @@
     }
 
     .avatar {
-      width: 32px; height: 32px; border-radius: 50%;
+      width: 34px; height: 34px; border-radius: 50%;
       display: flex; align-items: center; justify-content: center;
-      flex-shrink: 0; font-size: 0.8rem; font-weight: 700;
-      border: 1px solid var(--border);
+      flex-shrink: 0; font-size: 0.82rem; font-weight: 700;
+      border: 1.5px solid rgba(255,255,255,0.12);
     }
 
     .avatar.user-av {
-      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      background: linear-gradient(135deg, #7c7fff, #a78bfa);
       color: white; border-color: transparent;
+      box-shadow: 0 2px 12px rgba(124,127,255,0.4);
     }
 
     .avatar.agent-av {
-      background: linear-gradient(135deg, #0f172a, #1e293b);
-      font-size: 0.9rem;
+      background: linear-gradient(135deg, #1e2540, #2d3560);
+      font-size: 1rem;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.4);
     }
 
     .bubble {
-      max-width: min(72%, 520px);
-      padding: 12px 15px;
-      border-radius: 16px;
+      max-width: min(75%, 540px);
+      min-width: 48px;
+      padding: 11px 15px;
+      border-radius: 18px;
       font-size: 0.875rem;
-      line-height: 1.65;
+      line-height: 1.7;
       position: relative;
       word-break: break-word;
+      display: inline-block;
     }
 
     .msg-row.user .bubble {
-      background: var(--bg-msg-user);
-      border: 1px solid rgba(99,102,241,0.25);
-      border-top-right-radius: 4px;
+      background: linear-gradient(135deg, rgba(124,127,255,0.28), rgba(167,139,250,0.20));
+      border: 1px solid rgba(124,127,255,0.35);
+      border-top-right-radius: 5px;
       color: var(--text-primary);
+      box-shadow: 0 4px 20px rgba(124,127,255,0.12);
     }
 
     .msg-row.agent .bubble {
-      background: var(--bg-msg-agent);
-      border: 1px solid var(--border);
-      border-top-left-radius: 4px;
+      background: rgba(255,255,255,0.07);
+      border: 1px solid rgba(255,255,255,0.13);
+      border-top-left-radius: 5px;
+      backdrop-filter: blur(8px);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+    }
+
+    [data-theme="light"] .msg-row.agent .bubble {
+      background: rgba(255,255,255,0.85);
+      border-color: rgba(0,0,0,0.09);
     }
 
     .msg-meta {
@@ -419,9 +450,9 @@
 
     .typing-bubble {
       padding: 14px 18px;
-      background: var(--bg-msg-agent);
-      border: 1px solid var(--border);
-      border-radius: 16px; border-top-left-radius: 4px;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.13);
+      border-radius: 18px; border-top-left-radius: 5px;
       display: flex; align-items: center; gap: 5px;
     }
 
@@ -441,9 +472,14 @@
 
     /* ─── INPUT AREA ──────────────────────────────────────────────── */
     .input-area {
-      padding: 12px;
-      border-top: 1px solid var(--border);
+      padding: 12px 14px 10px;
+      border-top: 1px solid rgba(255,255,255,0.09);
+      background: rgba(0,0,0,0.15);
       flex-shrink: 0;
+    }
+    [data-theme="light"] .input-area {
+      background: rgba(0,0,0,0.02);
+      border-top-color: rgba(0,0,0,0.08);
     }
 
     .input-row {
@@ -456,26 +492,32 @@
 
     #userInput {
       width: 100%;
-      background: var(--glass-light);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 12px 42px 12px 14px;
+      background: rgba(255,255,255,0.06);
+      border: 1.5px solid rgba(255,255,255,0.14);
+      border-radius: 14px;
+      padding: 13px 44px 13px 16px;
       color: var(--text-primary);
       font-family: 'Inter', sans-serif;
-      font-size: 0.875rem;
+      font-size: 0.9rem;
       resize: none;
       outline: none;
-      transition: border-color 0.2s;
-      line-height: 1.5;
+      transition: border-color 0.2s, box-shadow 0.2s;
+      line-height: 1.55;
       max-height: 120px;
       overflow-y: auto;
     }
 
-    #userInput::placeholder { color: var(--text-muted); }
+    [data-theme="light"] #userInput {
+      background: rgba(255,255,255,0.80);
+      border-color: rgba(0,0,0,0.13);
+      color: #1a1f36;
+    }
+
+    #userInput::placeholder { color: var(--text-muted); font-size: 0.83rem; }
 
     #userInput:focus {
       border-color: var(--accent);
-      box-shadow: 0 0 0 3px var(--accent-glow);
+      box-shadow: 0 0 0 3px rgba(124,127,255,0.22);
     }
 
     .upload-btn {
@@ -768,9 +810,22 @@
 
     /* ─── MOBILE ──────────────────────────────────────────────────── */
     @media (max-width: 600px) {
-      .app { padding: 0 8px; }
-      .bubble { max-width: 88%; }
-      .brand-name { font-size: 0.9rem; }
+      .app { padding: 0 6px; }
+      .bubble { max-width: 85%; font-size: 0.855rem; }
+      .brand-name { font-size: 0.88rem; }
+      .header { padding: 10px 0 8px; }
+      .status-bar { padding: 5px 10px; font-size: 0.68rem; }
+      .input-hint { display: none; }
+      #messages { padding: 14px 12px; gap: 12px; }
+      .input-area { padding: 10px 10px 8px; }
+      .send-btn { width: 42px; height: 42px; border-radius: 12px; }
+      .avatar { width: 28px; height: 28px; font-size: 0.72rem; }
+      .msg-row { gap: 8px; }
+    }
+
+    @media (max-width: 380px) {
+      .header-actions .icon-btn:nth-child(1) { display: none; }
+      .bubble { max-width: 90%; }
     }
   </style>
 </head>
@@ -914,21 +969,21 @@
   }
 
   function createNodes() {
-    const count = Math.floor((W * H) / 18000);
+    const count = Math.min(Math.floor((W * H) / 10000), 80);
     nodes = Array.from({ length: count }, () => ({
       x: Math.random() * W,
       y: Math.random() * H,
-      vx: (Math.random() - 0.5) * 0.25,
-      vy: (Math.random() - 0.5) * 0.25,
-      r: Math.random() * 1.5 + 0.5,
+      vx: (Math.random() - 0.5) * 0.3,
+      vy: (Math.random() - 0.5) * 0.3,
+      r: Math.random() * 2 + 1,
     }));
   }
 
   function draw() {
     ctx.clearRect(0, 0, W, H);
     const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
-    const nodeColor   = isDark ? 'rgba(99,102,241,0.5)' : 'rgba(99,102,241,0.3)';
-    const lineColor   = isDark ? 'rgba(99,102,241,0.08)' : 'rgba(99,102,241,0.06)';
+    const nodeColor   = isDark ? 'rgba(140,145,255,0.75)' : 'rgba(99,102,241,0.45)';
+    const lineColor   = isDark ? 'rgba(124,127,255,0.18)' : 'rgba(99,102,241,0.12)';
 
     nodes.forEach(n => {
       n.x += n.vx; n.y += n.vy;
@@ -941,13 +996,13 @@
         const dx = nodes[i].x - nodes[j].x;
         const dy = nodes[i].y - nodes[j].y;
         const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < 160) {
+        if (dist < 180) {
           ctx.beginPath();
           ctx.moveTo(nodes[i].x, nodes[i].y);
           ctx.lineTo(nodes[j].x, nodes[j].y);
           ctx.strokeStyle = lineColor;
-          ctx.lineWidth = 0.6;
-          ctx.globalAlpha = 1 - dist / 160;
+          ctx.lineWidth = 0.8;
+          ctx.globalAlpha = (1 - dist / 180) * 0.9;
           ctx.stroke();
           ctx.globalAlpha = 1;
         }
@@ -955,6 +1010,15 @@
     }
 
     nodes.forEach(n => {
+      // glow halo
+      const grad = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, n.r * 4);
+      grad.addColorStop(0, isDark ? 'rgba(140,145,255,0.35)' : 'rgba(99,102,241,0.2)');
+      grad.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, n.r * 4, 0, Math.PI * 2);
+      ctx.fillStyle = grad;
+      ctx.fill();
+      // core dot
       ctx.beginPath();
       ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
       ctx.fillStyle = nodeColor;
