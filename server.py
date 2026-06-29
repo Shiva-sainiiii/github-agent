@@ -145,7 +145,7 @@ def chat():
                 "X-Title": "GitHub Agent"
             },
             json={
-                "model": "meta-llama/llama-3.2-3b-instruct:free",
+                "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
                 "messages": messages,
                 "temperature": 0.2
             },
