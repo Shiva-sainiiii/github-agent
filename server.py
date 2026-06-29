@@ -145,7 +145,7 @@ def chat():
                 "X-Title": "GitHub Agent"
             },
             json={
-                "model": "google/gemini-flash-1.5",
+                "model": "meta-llama/llama-3.2-3b-instruct:free",
                 "messages": messages,
                 "temperature": 0.2
             },
