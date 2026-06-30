@@ -581,10 +581,13 @@ def chat():
                 "gitRepository": {
                     "type": "github",
                     "repo": f"{GITHUB_USERNAME}/{repo}"
-                }
+                },
+                # Always set framework explicitly (null = static/vanilla if not specified).
+                # Leaving this key out entirely is what caused Vercel to treat the project
+                # as having unconfirmed settings, which later breaks manual /v13/deployments
+                # calls with a "projectSettings required" error.
+                "framework": framework if framework else None
             }
-            if framework:
-                payload["framework"] = framework
 
             r = vc_api("POST", "/v11/projects", json=payload)
             if r.status_code in (200, 201):
@@ -644,6 +647,11 @@ def chat():
                     "action": "error"
                 })
 
+            # Vercel requires a "projectSettings" object on /v13/deployments whenever the
+            # project doesn't already have confirmed build settings (e.g. fresh imports
+            # that relied on auto-detection). We pull the framework Vercel already has on
+            # file for this project and pass it back — this is the real, API-confirmed
+            # value, never guessed. "null" framework is valid and means static/vanilla.
             payload = {
                 "name": project_name,
                 "target": "production",
@@ -651,6 +659,9 @@ def chat():
                     "type": "github",
                     "repoId": repo_id,
                     "ref": git_branch
+                },
+                "projectSettings": {
+                    "framework": proj.get("framework")
                 }
             }
 
