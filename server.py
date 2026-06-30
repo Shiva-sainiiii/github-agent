@@ -313,7 +313,7 @@ def chat():
                 "X-Title": "Multi-Cloud DevOps Agent"
             },
             json={
-                "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
+                "model": "nvidia/nemotron-3-super-120b-a12b:free",
                 "messages": messages,
                 "temperature": 0.2
             },
