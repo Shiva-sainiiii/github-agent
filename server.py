@@ -394,7 +394,7 @@ def chat():
                 "X-Title": "Multi-Cloud DevOps Agent"
             },
             json={
-                "model": "nvidia/nemotron-3-super-120b-a12b:free",
+                "model": "poolside/laguna-m.1:free",
                 "messages": messages,
                 "temperature": 0.2
             },
