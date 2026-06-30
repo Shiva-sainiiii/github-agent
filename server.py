@@ -124,6 +124,9 @@ You act by outputting EXACTLY ONE command per response. Never combine commands. 
 
 11. VERCEL_DEPLOY: {{"project_name":"project-name"}}
     Triggers a new production deployment for an existing Vercel project linked to a GitHub repo.
+    This waits briefly (~25s) for the build to finish. If the build is still running after that,
+    you'll get a "pending" result with a deployment_id — tell the user it's still building and that
+    they should ask you to check status again shortly, rather than claiming it's done.
 
 12. VERCEL_DEPLOY_STATUS: {{"deployment_id":"dpl_xxx"}}
     Checks the status of a deployment (use the deployment_id returned by VERCEL_DEPLOY).
@@ -271,6 +274,78 @@ def vercel_find_project(name):
         if p.get("name") == name:
             return p
     return None
+
+
+# Terminal states for a Vercel deployment — polling stops once one of these is reached.
+VERCEL_TERMINAL_STATES = {"READY", "ERROR", "CANCELED"}
+
+
+def vercel_poll_deployment(deployment_id, max_wait_seconds=25, interval_seconds=3):
+    """Poll GET /v13/deployments/{id} until the deployment reaches a terminal readyState
+    (READY, ERROR, or CANCELED) or max_wait_seconds elapses.
+
+    max_wait_seconds is intentionally short (~25s) because this runs synchronously inside
+    a single Flask request — Render's free tier, most browsers, and default WSGI worker
+    timeouts will kill a request held open much longer than ~30s. Real Vercel builds often
+    take 30-120+ seconds, so this will frequently time out before READY. That's expected
+    and handled honestly: see "timed_out" in the return value below. The caller (VERCEL_DEPLOY)
+    must report a BUILDING/in-progress status rather than success when timed_out is True, and
+    the user re-checks via VERCEL_DEPLOY_STATUS (a separate, single-shot, fast request) once
+    the build has had more time.
+
+    Returns a dict: {
+        "ok": bool,                # True only if readyState == READY
+        "timed_out": bool,         # True if we gave up waiting before a terminal state
+        "deployment": <full API response dict>,
+        "state": <final readyState string>,
+        "live_url": <real https:// URL from the API, or None if not ready>,
+    }
+    """
+    elapsed = 0
+    last_dep = {}
+    while elapsed <= max_wait_seconds:
+        r = vc_api("GET", f"/v13/deployments/{deployment_id}")
+        if r.status_code != 200:
+            # Transient error reaching Vercel — keep retrying until max_wait_seconds.
+            time.sleep(interval_seconds)
+            elapsed += interval_seconds
+            continue
+
+        dep = r.json()
+        last_dep = dep
+        state = dep.get("readyState", "UNKNOWN")
+
+        if state in VERCEL_TERMINAL_STATES:
+            live_url = None
+            if state == "READY":
+                # dep["url"] is the real unique deployment hostname assigned by Vercel
+                # (e.g. "my-project-abc123xyz.vercel.app") — NEVER guessed/concatenated.
+                raw_url = dep.get("url")
+                if raw_url:
+                    live_url = f"https://{raw_url}"
+                # Prefer a production alias if one was assigned (friendlier domain),
+                # but only trust it if aliasAssigned is true and alias[] is non-empty.
+                if dep.get("aliasAssigned") and dep.get("alias"):
+                    live_url = f"https://{dep['alias'][0]}"
+            return {
+                "ok": state == "READY",
+                "timed_out": False,
+                "deployment": dep,
+                "state": state,
+                "live_url": live_url,
+            }
+
+        time.sleep(interval_seconds)
+        elapsed += interval_seconds
+
+    # Gave up waiting — report this honestly rather than guessing a final state.
+    return {
+        "ok": False,
+        "timed_out": True,
+        "deployment": last_dep,
+        "state": last_dep.get("readyState", "UNKNOWN"),
+        "live_url": None,
+    }
 
 
 # ════════════════════════════════════════════════════════════════
@@ -514,9 +589,33 @@ def chat():
             r = vc_api("POST", "/v11/projects", json=payload)
             if r.status_code in (200, 201):
                 proj = r.json()
+
+                # Importing a project does NOT itself guarantee a finished deployment yet —
+                # Vercel queues an initial build in the background. We never guess a URL here.
+                # The "latestDeployments" field (if present) tells us whether one was queued.
+                latest = proj.get("latestDeployments") or []
+                dep_id = latest[0].get("uid") or latest[0].get("id") if latest else None
+
+                reply = (
+                    f"✅ `{repo}` Vercel se connect ho gaya!\n**Project: {proj['name']}**\n"
+                    f"Project ID: `{proj.get('id')}`\n\n"
+                )
+                if dep_id:
+                    reply += (
+                        f"⏳ Vercel ne automatically ek initial build queue kar diya hai (Deployment ID: `{dep_id}`).\n"
+                        f"Status check karne ke liye bol: 'check deployment status {dep_id}' — "
+                        f"tabhi main real live URL bata sakta hoon, build complete hone ke baad."
+                    )
+                else:
+                    reply += (
+                        "Build abhi queue nahi hua. Deploy trigger karne ke liye bol: "
+                        f"'deploy {proj['name']} to vercel'."
+                    )
+
                 return safe_jsonify({
-                    "reply": f"✅ `{repo}` Vercel se connect ho gaya!\n**Project: {proj['name']}**\n🔗 https://{proj['name']}.vercel.app\n\nAb deploy karne ke liye bol: 'deploy {proj['name']} to vercel'",
-                    "action": "vercel_import", "project_name": proj["name"], "project_id": proj.get("id")
+                    "reply": reply,
+                    "action": "vercel_import", "project_name": proj["name"], "project_id": proj.get("id"),
+                    "deployment_id": dep_id
                 })
             else:
                 err = r.json().get("error", {}).get("message", r.text[:200])
@@ -539,6 +638,12 @@ def chat():
             repo_id = git_repo.get("repoId")
             git_branch = git_repo.get("productionBranch", "main")
 
+            if not repo_id:
+                return safe_jsonify({
+                    "reply": f"❌ Project `{project_name}` GitHub se linked nahi hai (no repoId). Pehle VERCEL_IMPORT_REPO se import kar.",
+                    "action": "error"
+                })
+
             payload = {
                 "name": project_name,
                 "target": "production",
@@ -546,22 +651,48 @@ def chat():
                     "type": "github",
                     "repoId": repo_id,
                     "ref": git_branch
-                } if repo_id else None
+                }
             }
-            payload = {k: v for k, v in payload.items() if v is not None}
 
             r = vc_api("POST", "/v13/deployments", json=payload)
-            if r.status_code in (200, 201):
-                dep = r.json()
-                dep_id = dep.get("id")
-                dep_url = dep.get("url", "")
+            if r.status_code not in (200, 201):
+                err = r.json().get("error", {}).get("message", r.text[:200])
+                return safe_jsonify({"reply": f"❌ Vercel deploy trigger Error: {err}", "action": "error"})
+
+            dep = r.json()
+            dep_id = dep.get("id")
+            if not dep_id:
+                return safe_jsonify({"reply": "❌ Vercel ne deployment ID nahi diya, kuch galat hua.", "action": "error"})
+
+            # Trigger succeeded — now actually wait and check, instead of trusting the
+            # immediate response (which is always QUEUED/BUILDING, never finished).
+            result = vercel_poll_deployment(dep_id)
+
+            if result["ok"]:
+                # state == READY and we have a real, API-confirmed URL.
                 return safe_jsonify({
-                    "reply": f"🚀 Deployment trigger ho gaya!\n**{project_name}**\n🔗 https://{dep_url}\n⏳ Status: `{dep.get('readyState', 'BUILDING')}`\n\nID: `{dep_id}`",
-                    "action": "vercel_deploy", "deployment_id": dep_id, "url": f"https://{dep_url}"
+                    "reply": f"✅ Deployment complete!\n**{project_name}**\n🔗 {result['live_url']}\n\nID: `{dep_id}`",
+                    "action": "vercel_deploy", "deployment_id": dep_id, "url": result["live_url"], "state": "READY"
+                })
+            elif result["timed_out"]:
+                # Build is still running after our safe polling window — be honest about it,
+                # do NOT invent a URL, and tell the user how to check again.
+                return safe_jsonify({
+                    "reply": (
+                        f"⏳ Deploy trigger ho gaya hai (ID: `{dep_id}`), lekin build abhi bhi chal raha hai "
+                        f"{25}s ke baad bhi. Vercel builds kabhi kabhi 1-2 min lete hain.\n\n"
+                        f"Status check karne ke liye thodi der baad bol: 'check deployment status {dep_id}'."
+                    ),
+                    "action": "vercel_deploy_pending", "deployment_id": dep_id, "state": result["state"]
                 })
             else:
-                err = r.json().get("error", {}).get("message", r.text[:200])
-                return safe_jsonify({"reply": f"❌ Vercel deploy Error: {err}", "action": "error"})
+                # Terminal but failed state — ERROR or CANCELED. Report failure honestly.
+                error_detail = result["deployment"].get("errorMessage", "") or result["state"]
+                return safe_jsonify({
+                    "reply": f"❌ Deployment fail ho gaya.\nStatus: **{result['state']}**\n{error_detail}\nID: `{dep_id}`",
+                    "action": "error", "deployment_id": dep_id, "state": result["state"]
+                })
+
         except json.JSONDecodeError as e:
             return safe_jsonify({"reply": f"❌ JSON parse error: {str(e)}", "action": "error"})
         except Exception as e:
@@ -576,10 +707,23 @@ def chat():
                 dep = r.json()
                 state = dep.get("readyState", "UNKNOWN")
                 icon = {"READY": "✅", "ERROR": "❌", "BUILDING": "⏳", "QUEUED": "⏳", "CANCELED": "🚫"}.get(state, "ℹ️")
-                return safe_jsonify({
-                    "reply": f"{icon} Deployment `{dep_id}`\nStatus: **{state}**\n🔗 https://{dep.get('url','')}",
-                    "action": "vercel_status", "state": state
-                })
+
+                if state == "READY":
+                    # Only show a URL once the build is actually serving traffic.
+                    # Prefer the production alias if Vercel assigned one; fall back to
+                    # the unique deployment hostname — both are real values from the API.
+                    if dep.get("aliasAssigned") and dep.get("alias"):
+                        live_url = f"https://{dep['alias'][0]}"
+                    else:
+                        live_url = f"https://{dep.get('url', '')}"
+                    reply = f"{icon} Deployment `{dep_id}`\nStatus: **{state}**\n🔗 {live_url}"
+                elif state == "ERROR":
+                    error_detail = dep.get("errorMessage", "")
+                    reply = f"{icon} Deployment `{dep_id}`\nStatus: **{state}**\n{error_detail}"
+                else:
+                    reply = f"{icon} Deployment `{dep_id}`\nStatus: **{state}** — build abhi chal raha hai, URL build complete hone ke baad milega."
+
+                return safe_jsonify({"reply": reply, "action": "vercel_status", "state": state})
             else:
                 return safe_jsonify({"reply": f"❌ Status fetch nahi hua: {r.text[:200]}", "action": "error"})
         except json.JSONDecodeError as e:
