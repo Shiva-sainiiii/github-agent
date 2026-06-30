@@ -5,6 +5,7 @@ import os
 import base64
 import json
 import re
+import time
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -12,18 +13,39 @@ load_dotenv()
 app = Flask(__name__)
 CORS(app)
 
-GITHUB_TOKEN   = os.getenv("GITHUB_TOKEN")
-OPENROUTER_KEY = os.getenv("OPENROUTER_KEY")
+# ── ENV / CREDENTIALS ──
+GITHUB_TOKEN    = os.getenv("GITHUB_TOKEN")
 GITHUB_USERNAME = os.getenv("GITHUB_USERNAME")
+OPENROUTER_KEY  = os.getenv("OPENROUTER_KEY")
+VERCEL_TOKEN    = os.getenv("VERCEL_TOKEN")
+RENDER_TOKEN    = os.getenv("RENDER_TOKEN")
 
 GH_HEADERS = {
     "Authorization": f"token {GITHUB_TOKEN}",
     "Accept": "application/vnd.github+json"
 }
 
-SYSTEM_PROMPT = f"""You are a powerful GitHub agent for user: {GITHUB_USERNAME}.
+VERCEL_HEADERS = {
+    "Authorization": f"Bearer {VERCEL_TOKEN}",
+    "Content-Type": "application/json"
+}
 
-You can perform these GitHub actions by outputting EXACTLY one command per response:
+RENDER_HEADERS = {
+    "Authorization": f"Bearer {RENDER_TOKEN}",
+    "Accept": "application/json",
+    "Content-Type": "application/json"
+}
+
+
+# ════════════════════════════════════════════════════════════════
+#  SYSTEM PROMPT — multi-cloud command surface
+# ════════════════════════════════════════════════════════════════
+SYSTEM_PROMPT = f"""You are a powerful Multi-Cloud DevOps Agent for user: {GITHUB_USERNAME}.
+You control three platforms: GitHub (source code), Vercel (frontend deploys), and Render (backend/web services + databases).
+
+You act by outputting EXACTLY ONE command per response. Never combine commands. Never add commentary before or after a command.
+
+──────────────── GITHUB COMMANDS ────────────────
 
 1. CREATE_REPO: <repo-name>
    Example: CREATE_REPO: my-portfolio
@@ -35,85 +57,158 @@ You can perform these GitHub actions by outputting EXACTLY one command per respo
    (no argument needed)
 
 4. CREATE_FILE: {{"repo":"repo-name","path":"folder/file.html","content":"full file content here","message":"commit message"}}
-   Use this to create new files. Path can include folders like src/index.js
    Always write complete, working code in content field.
 
 5. READ_FILE: {{"repo":"repo-name","path":"file.html"}}
-   Use this to read a file from a repo.
 
 6. EDIT_FILE: {{"repo":"repo-name","path":"file.html","content":"updated full content","message":"what changed"}}
-   Use this to edit/update existing files.
 
 7. DELETE_FILE: {{"repo":"repo-name","path":"file.html","message":"reason"}}
-   Use this to delete a specific file.
 
 8. LIST_FILES: {{"repo":"repo-name","path":""}}
-   Use this to list files in a repo or folder. Leave path empty for root.
+   Leave path empty for root.
 
-IMPORTANT RULES:
+──────────────── VERCEL COMMANDS ────────────────
+
+9. VERCEL_LIST_PROJECTS
+   (no argument needed) — lists all Vercel projects in the account.
+
+10. VERCEL_IMPORT_REPO: {{"repo":"repo-name","project_name":"optional-custom-name","framework":"optional-framework-preset"}}
+    Connects/imports a GitHub repo as a new Vercel project. "framework" can be omitted to let Vercel auto-detect
+    (e.g. "vite", "nextjs", "create-react-app", or null for static/vanilla).
+
+11. VERCEL_DEPLOY: {{"project_name":"project-name"}}
+    Triggers a new production deployment for an existing Vercel project linked to a GitHub repo.
+
+12. VERCEL_DEPLOY_STATUS: {{"deployment_id":"dpl_xxx"}}
+    Checks the status of a deployment (use the deployment_id returned by VERCEL_DEPLOY).
+
+──────────────── RENDER COMMANDS ────────────────
+
+13. RENDER_LIST_SERVICES
+    (no argument needed) — lists all web services, static sites, and databases on Render.
+
+14. RENDER_GET_ENV: {{"service_id":"srv-xxx"}}
+    Fetches current environment variables for a Render service.
+
+15. RENDER_SET_ENV: {{"service_id":"srv-xxx","env_vars":{{"KEY":"value","KEY2":"value2"}}}}
+    Updates/adds environment variables on a Render service (merges with existing — does not wipe unspecified keys
+    unless the platform requires a full replace, in which case fetch existing first via RENDER_GET_ENV).
+
+16. RENDER_DEPLOY: {{"service_id":"srv-xxx","clear_cache":true}}
+    Triggers a manual deploy. clear_cache defaults to false if omitted.
+
+──────────────── RULES ────────────────
+
 - Output ONLY the command, nothing else before or after it.
-- JSON must be valid — no trailing commas, proper quotes.
+- JSON must be valid — no trailing commas, proper double quotes.
 - For code in content field, escape double quotes as \\" and newlines as \\n.
 - Always write complete working code, never truncate.
-- If user asks something you can't do via GitHub API, explain it conversationally (no command).
-- Remember: you have full context of the conversation above.
+- If the user asks something outside these 16 commands, respond conversationally with no command — explain what you can/can't do.
+- You have full context of the conversation above. Use repo/project/service names mentioned earlier if the user refers back to them ("that repo", "the service", "it").
+- When a user asks to "deploy X to Vercel" and X isn't a known Vercel project yet, first use VERCEL_IMPORT_REPO, then on the next turn VERCEL_DEPLOY.
 """
 
 
+COMMANDS = [
+    "CREATE_REPO:", "DELETE_REPO:", "LIST_REPOS", "CREATE_FILE:",
+    "READ_FILE:", "EDIT_FILE:", "DELETE_FILE:", "LIST_FILES:",
+    "VERCEL_LIST_PROJECTS", "VERCEL_IMPORT_REPO:", "VERCEL_DEPLOY:", "VERCEL_DEPLOY_STATUS:",
+    "RENDER_LIST_SERVICES", "RENDER_GET_ENV:", "RENDER_SET_ENV:", "RENDER_DEPLOY:",
+]
+
+# Commands that take no argument at all
+NO_ARG_COMMANDS = {"LIST_REPOS", "VERCEL_LIST_PROJECTS", "RENDER_LIST_SERVICES"}
+
+
 def extract_command(text):
-    """Robustly extract command from AI response."""
+    """Robustly extract a single command (and its payload) from the AI response.
+
+    Returns (command_name, raw_value_or_None). For JSON commands, raw_value_or_None
+    is the raw JSON substring (still needs json.loads). For no-arg commands, value is None.
+    """
     text = text.strip()
-    
-    commands = ["CREATE_REPO:", "DELETE_REPO:", "LIST_REPOS", "CREATE_FILE:",
-                "READ_FILE:", "EDIT_FILE:", "DELETE_FILE:", "LIST_FILES:"]
-    
-    for cmd in commands:
-        if cmd in text:
-            if cmd == "LIST_REPOS":
-                return ("LIST_REPOS", None)
-            
-            parts = text.split(cmd, 1)
-            if len(parts) < 2:
-                continue
-            value = parts[1].strip()
-            
-            # For JSON commands, extract just the JSON block
-            if value.startswith("{"):
-                brace_count = 0
-                json_end = 0
-                for i, ch in enumerate(value):
-                    if ch == "{":
-                        brace_count += 1
-                    elif ch == "}":
-                        brace_count -= 1
-                        if brace_count == 0:
-                            json_end = i + 1
-                            break
-                if json_end > 0:
-                    value = value[:json_end]
-            else:
-                # For simple string commands, take first line
-                value = value.split("\n")[0].strip()
-            
-            return (cmd.rstrip(":"), value)
-    
+
+    # Sort longest-prefix-first so e.g. VERCEL_DEPLOY_STATUS: doesn't get shadowed by VERCEL_DEPLOY:
+    for cmd in sorted(COMMANDS, key=len, reverse=True):
+        if cmd not in text:
+            continue
+
+        bare = cmd.rstrip(":")
+        if bare in NO_ARG_COMMANDS:
+            return (bare, None)
+
+        parts = text.split(cmd, 1)
+        if len(parts) < 2:
+            continue
+        value = parts[1].strip()
+
+        if value.startswith("{"):
+            brace_count = 0
+            json_end = 0
+            for i, ch in enumerate(value):
+                if ch == "{":
+                    brace_count += 1
+                elif ch == "}":
+                    brace_count -= 1
+                    if brace_count == 0:
+                        json_end = i + 1
+                        break
+            if json_end > 0:
+                value = value[:json_end]
+        else:
+            value = value.split("\n")[0].strip()
+
+        return (bare, value)
+
     return (None, None)
 
 
+# ════════════════════════════════════════════════════════════════
+#  GITHUB HELPERS
+# ════════════════════════════════════════════════════════════════
 def gh_api(method, endpoint, **kwargs):
-    """Generic GitHub API caller."""
     url = f"https://api.github.com{endpoint}"
-    return requests.request(method, url, headers=GH_HEADERS, **kwargs)
+    return requests.request(method, url, headers=GH_HEADERS, timeout=20, **kwargs)
 
 
 def get_file_sha(repo, path):
-    """Get SHA of existing file (needed for updates)."""
     r = gh_api("GET", f"/repos/{GITHUB_USERNAME}/{repo}/contents/{path}")
     if r.status_code == 200:
         return r.json().get("sha")
     return None
 
 
+# ════════════════════════════════════════════════════════════════
+#  VERCEL HELPERS
+# ════════════════════════════════════════════════════════════════
+def vc_api(method, endpoint, **kwargs):
+    url = f"https://api.vercel.com{endpoint}"
+    return requests.request(method, url, headers=VERCEL_HEADERS, timeout=20, **kwargs)
+
+
+def vercel_find_project(name):
+    """Find a Vercel project by name. Returns project dict or None."""
+    r = vc_api("GET", "/v9/projects")
+    if r.status_code != 200:
+        return None
+    for p in r.json().get("projects", []):
+        if p.get("name") == name:
+            return p
+    return None
+
+
+# ════════════════════════════════════════════════════════════════
+#  RENDER HELPERS
+# ════════════════════════════════════════════════════════════════
+def rd_api(method, endpoint, **kwargs):
+    url = f"https://api.render.com/v1{endpoint}"
+    return requests.request(method, url, headers=RENDER_HEADERS, timeout=20, **kwargs)
+
+
+# ════════════════════════════════════════════════════════════════
+#  ROUTES
+# ════════════════════════════════════════════════════════════════
 @app.route("/")
 def home():
     return send_from_directory(".", "index.html")
@@ -123,18 +218,16 @@ def home():
 def chat():
     body = request.json or {}
     user_message = body.get("message", "").strip()
-    history = body.get("history", [])   # [{role, content}, ...]
+    history = body.get("history", [])
 
     if not user_message:
         return jsonify({"reply": "Kuch toh bol bhai 😅", "action": None})
 
-    # Build messages with full history
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
-    for h in history[-10:]:   # last 10 turns max to stay in context
+    for h in history[-10:]:
         messages.append({"role": h["role"], "content": h["content"]})
     messages.append({"role": "user", "content": user_message})
 
-    # Call AI
     try:
         ai_resp = requests.post(
             "https://openrouter.ai/api/v1/chat/completions",
@@ -142,7 +235,7 @@ def chat():
                 "Authorization": f"Bearer {OPENROUTER_KEY}",
                 "Content-Type": "application/json",
                 "HTTP-Referer": "https://github-agent-r7rn.onrender.com",
-                "X-Title": "GitHub Agent"
+                "X-Title": "Multi-Cloud DevOps Agent"
             },
             json={
                 "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
@@ -162,10 +255,11 @@ def chat():
     except Exception as e:
         return jsonify({"reply": f"AI connection error: {str(e)}", "action": "error"})
 
-    # Parse command
     cmd, value = extract_command(ai_text)
 
-    # --- CREATE REPO ---
+    # ──────────────────────────────────────────────────────────
+    # GITHUB
+    # ──────────────────────────────────────────────────────────
     if cmd == "CREATE_REPO":
         repo_name = re.sub(r"[^a-zA-Z0-9_.-]", "-", value.strip())
         r = gh_api("POST", "/user/repos", json={"name": repo_name, "private": False, "auto_init": True})
@@ -173,16 +267,13 @@ def chat():
             data = r.json()
             return jsonify({
                 "reply": f"✅ Repo ban gaya!\n**{repo_name}**\n🔗 {data['html_url']}",
-                "action": "create_repo",
-                "url": data["html_url"],
-                "repo": repo_name
+                "action": "create_repo", "url": data["html_url"], "repo": repo_name
             })
         elif r.status_code == 422:
             return jsonify({"reply": f"⚠️ Repo `{repo_name}` already exist karta hai.", "action": "warning"})
         else:
             return jsonify({"reply": f"❌ GitHub Error: {r.json().get('message', 'Repo nahi bana')}", "action": "error"})
 
-    # --- DELETE REPO ---
     elif cmd == "DELETE_REPO":
         repo_name = value.strip()
         r = gh_api("DELETE", f"/repos/{GITHUB_USERNAME}/{repo_name}")
@@ -192,7 +283,6 @@ def chat():
             msg = r.json().get("message", "Repo delete nahi hua") if r.content else "Repo delete nahi hua"
             return jsonify({"reply": f"❌ Delete Error: {msg}", "action": "error"})
 
-    # --- LIST REPOS ---
     elif cmd == "LIST_REPOS":
         r = gh_api("GET", f"/users/{GITHUB_USERNAME}/repos?per_page=20&sort=updated")
         if r.status_code == 200:
@@ -208,7 +298,6 @@ def chat():
         else:
             return jsonify({"reply": "❌ Repos fetch nahi hue.", "action": "error"})
 
-    # --- LIST FILES ---
     elif cmd == "LIST_FILES":
         try:
             data = json.loads(value)
@@ -220,10 +309,7 @@ def chat():
                 items = r.json()
                 if not isinstance(items, list):
                     items = [items]
-                lines = []
-                for item in items:
-                    icon = "📁" if item["type"] == "dir" else "📄"
-                    lines.append(f"{icon} {item['path']}")
+                lines = [f"{'📁' if item['type'] == 'dir' else '📄'} {item['path']}" for item in items]
                 reply = f"Files in `{repo}/{path or ''}`:\n\n" + "\n".join(lines)
                 return jsonify({"reply": reply, "action": "list_files"})
             else:
@@ -231,7 +317,6 @@ def chat():
         except Exception as e:
             return jsonify({"reply": f"❌ Parse error: {str(e)}", "action": "error"})
 
-    # --- READ FILE ---
     elif cmd == "READ_FILE":
         try:
             data = json.loads(value)
@@ -244,42 +329,29 @@ def chat():
                 preview = content[:2000] + ("\n...[truncated]" if len(content) > 2000 else "")
                 return jsonify({
                     "reply": f"📄 `{path}` ({file_data['size']} bytes):\n\n```\n{preview}\n```",
-                    "action": "read_file",
-                    "content": content,
-                    "sha": file_data["sha"]
+                    "action": "read_file", "content": content, "sha": file_data["sha"]
                 })
             else:
                 return jsonify({"reply": f"❌ File nahi mili: {r.json().get('message','')}", "action": "error"})
         except Exception as e:
             return jsonify({"reply": f"❌ Error: {str(e)}", "action": "error"})
 
-    # --- CREATE FILE ---
     elif cmd == "CREATE_FILE":
         try:
             data = json.loads(value)
-            repo     = data["repo"]
-            path     = data["path"]
-            content  = data["content"]
-            message  = data.get("message", f"Add {path} via AI Agent")
-
+            repo, path, content = data["repo"], data["path"], data["content"]
+            message = data.get("message", f"Add {path} via AI Agent")
             content_b64 = base64.b64encode(content.encode()).decode()
-
-            # Check if file exists to decide create vs update
             existing_sha = get_file_sha(repo, path)
             payload = {"message": message, "content": content_b64}
             if existing_sha:
                 payload["sha"] = existing_sha
-
             r = gh_api("PUT", f"/repos/{GITHUB_USERNAME}/{repo}/contents/{path}", json=payload)
             if r.status_code in [200, 201]:
                 url = r.json()["content"]["html_url"]
                 action = "update_file" if existing_sha else "create_file"
-                verb   = "Update" if existing_sha else "Bana"
-                return jsonify({
-                    "reply": f"✅ File {verb} di!\n**{path}**\n🔗 {url}",
-                    "action": action,
-                    "url": url
-                })
+                verb = "Update" if existing_sha else "Bana"
+                return jsonify({"reply": f"✅ File {verb} di!\n**{path}**\n🔗 {url}", "action": action, "url": url, "repo": repo})
             else:
                 return jsonify({"reply": f"❌ GitHub Error: {r.json().get('message','File nahi bani')}", "action": "error"})
         except json.JSONDecodeError as e:
@@ -287,29 +359,20 @@ def chat():
         except Exception as e:
             return jsonify({"reply": f"❌ Error: {str(e)}", "action": "error"})
 
-    # --- EDIT FILE ---
     elif cmd == "EDIT_FILE":
         try:
             data = json.loads(value)
-            repo    = data["repo"]
-            path    = data["path"]
-            content = data["content"]
+            repo, path, content = data["repo"], data["path"], data["content"]
             message = data.get("message", f"Update {path} via AI Agent")
-
             sha = get_file_sha(repo, path)
             if not sha:
                 return jsonify({"reply": f"❌ File `{path}` exist nahi karti repo `{repo}` me.", "action": "error"})
-
             content_b64 = base64.b64encode(content.encode()).decode()
             r = gh_api("PUT", f"/repos/{GITHUB_USERNAME}/{repo}/contents/{path}",
                        json={"message": message, "content": content_b64, "sha": sha})
             if r.status_code in [200, 201]:
                 url = r.json()["content"]["html_url"]
-                return jsonify({
-                    "reply": f"✅ File update ho gayi!\n**{path}**\n🔗 {url}",
-                    "action": "update_file",
-                    "url": url
-                })
+                return jsonify({"reply": f"✅ File update ho gayi!\n**{path}**\n🔗 {url}", "action": "update_file", "url": url, "repo": repo})
             else:
                 return jsonify({"reply": f"❌ Update Error: {r.json().get('message','')}", "action": "error"})
         except json.JSONDecodeError as e:
@@ -317,18 +380,14 @@ def chat():
         except Exception as e:
             return jsonify({"reply": f"❌ Error: {str(e)}", "action": "error"})
 
-    # --- DELETE FILE ---
     elif cmd == "DELETE_FILE":
         try:
-            data    = json.loads(value)
-            repo    = data["repo"]
-            path    = data["path"]
+            data = json.loads(value)
+            repo, path = data["repo"], data["path"]
             message = data.get("message", f"Delete {path} via AI Agent")
-
             sha = get_file_sha(repo, path)
             if not sha:
                 return jsonify({"reply": f"❌ File `{path}` exist nahi karti.", "action": "error"})
-
             r = gh_api("DELETE", f"/repos/{GITHUB_USERNAME}/{repo}/contents/{path}",
                        json={"message": message, "sha": sha})
             if r.status_code == 200:
@@ -338,7 +397,231 @@ def chat():
         except Exception as e:
             return jsonify({"reply": f"❌ Error: {str(e)}", "action": "error"})
 
-    # --- Plain AI Response ---
+    # ──────────────────────────────────────────────────────────
+    # VERCEL
+    # ──────────────────────────────────────────────────────────
+    elif cmd == "VERCEL_LIST_PROJECTS":
+        r = vc_api("GET", "/v9/projects")
+        if r.status_code == 200:
+            projects = r.json().get("projects", [])
+            if not projects:
+                return jsonify({"reply": "Koi Vercel project nahi mila.", "action": "vercel_list", "projects": []})
+            lines = []
+            for p in projects:
+                domain = p.get("targets", {}).get("production", {}).get("alias", [None])
+                live = f"https://{p['name']}.vercel.app"
+                lines.append(f"▲ **{p['name']}** — `{p.get('framework') or 'static'}`\n🔗 {live}")
+            return jsonify({
+                "reply": f"Tere {len(projects)} Vercel projects:\n\n" + "\n\n".join(lines),
+                "action": "vercel_list",
+                "projects": [{"name": p["name"], "id": p["id"]} for p in projects]
+            })
+        else:
+            return jsonify({"reply": f"❌ Vercel projects fetch nahi hue: {r.text[:200]}", "action": "error"})
+
+    elif cmd == "VERCEL_IMPORT_REPO":
+        try:
+            data = json.loads(value)
+            repo = data["repo"]
+            project_name = data.get("project_name") or repo
+            framework = data.get("framework")
+
+            payload = {
+                "name": project_name,
+                "gitRepository": {
+                    "type": "github",
+                    "repo": f"{GITHUB_USERNAME}/{repo}"
+                }
+            }
+            if framework:
+                payload["framework"] = framework
+
+            r = vc_api("POST", "/v11/projects", json=payload)
+            if r.status_code in (200, 201):
+                proj = r.json()
+                return jsonify({
+                    "reply": f"✅ `{repo}` Vercel se connect ho gaya!\n**Project: {proj['name']}**\n🔗 https://{proj['name']}.vercel.app\n\nAb deploy karne ke liye bol: 'deploy {proj['name']} to vercel'",
+                    "action": "vercel_import", "project_name": proj["name"], "project_id": proj.get("id")
+                })
+            else:
+                err = r.json().get("error", {}).get("message", r.text[:200])
+                return jsonify({"reply": f"❌ Vercel import Error: {err}", "action": "error"})
+        except json.JSONDecodeError as e:
+            return jsonify({"reply": f"❌ JSON parse error: {str(e)}", "action": "error"})
+        except Exception as e:
+            return jsonify({"reply": f"❌ Error: {str(e)}", "action": "error"})
+
+    elif cmd == "VERCEL_DEPLOY":
+        try:
+            data = json.loads(value)
+            project_name = data["project_name"]
+
+            proj = vercel_find_project(project_name)
+            if not proj:
+                return jsonify({"reply": f"❌ Vercel project `{project_name}` nahi mila. Pehle import kar.", "action": "error"})
+
+            git_repo = proj.get("link", {})
+            repo_id = git_repo.get("repoId")
+            git_branch = git_repo.get("productionBranch", "main")
+
+            payload = {
+                "name": project_name,
+                "target": "production",
+                "gitSource": {
+                    "type": "github",
+                    "repoId": repo_id,
+                    "ref": git_branch
+                } if repo_id else None
+            }
+            payload = {k: v for k, v in payload.items() if v is not None}
+
+            r = vc_api("POST", "/v13/deployments", json=payload)
+            if r.status_code in (200, 201):
+                dep = r.json()
+                dep_id = dep.get("id")
+                dep_url = dep.get("url", "")
+                return jsonify({
+                    "reply": f"🚀 Deployment trigger ho gaya!\n**{project_name}**\n🔗 https://{dep_url}\n⏳ Status: `{dep.get('readyState', 'BUILDING')}`\n\nID: `{dep_id}`",
+                    "action": "vercel_deploy", "deployment_id": dep_id, "url": f"https://{dep_url}"
+                })
+            else:
+                err = r.json().get("error", {}).get("message", r.text[:200])
+                return jsonify({"reply": f"❌ Vercel deploy Error: {err}", "action": "error"})
+        except json.JSONDecodeError as e:
+            return jsonify({"reply": f"❌ JSON parse error: {str(e)}", "action": "error"})
+        except Exception as e:
+            return jsonify({"reply": f"❌ Error: {str(e)}", "action": "error"})
+
+    elif cmd == "VERCEL_DEPLOY_STATUS":
+        try:
+            data = json.loads(value)
+            dep_id = data["deployment_id"]
+            r = vc_api("GET", f"/v13/deployments/{dep_id}")
+            if r.status_code == 200:
+                dep = r.json()
+                state = dep.get("readyState", "UNKNOWN")
+                icon = {"READY": "✅", "ERROR": "❌", "BUILDING": "⏳", "QUEUED": "⏳", "CANCELED": "🚫"}.get(state, "ℹ️")
+                return jsonify({
+                    "reply": f"{icon} Deployment `{dep_id}`\nStatus: **{state}**\n🔗 https://{dep.get('url','')}",
+                    "action": "vercel_status", "state": state
+                })
+            else:
+                return jsonify({"reply": f"❌ Status fetch nahi hua: {r.text[:200]}", "action": "error"})
+        except json.JSONDecodeError as e:
+            return jsonify({"reply": f"❌ JSON parse error: {str(e)}", "action": "error"})
+        except Exception as e:
+            return jsonify({"reply": f"❌ Error: {str(e)}", "action": "error"})
+
+    # ──────────────────────────────────────────────────────────
+    # RENDER
+    # ──────────────────────────────────────────────────────────
+    elif cmd == "RENDER_LIST_SERVICES":
+        r = rd_api("GET", "/services?limit=50")
+        if r.status_code == 200:
+            items = r.json()
+            if not items:
+                return jsonify({"reply": "Koi Render service nahi mila.", "action": "render_list", "services": []})
+            lines = []
+            services = []
+            for item in items:
+                svc = item.get("service", item)
+                name = svc.get("name", "unknown")
+                stype = svc.get("type", "service")
+                sid = svc.get("id", "")
+                url = svc.get("serviceDetails", {}).get("url", "")
+                icon = {"web_service": "🌐", "static_site": "📦", "private_service": "🔒",
+                        "background_worker": "⚙️", "cron_job": "⏰", "postgres": "🐘", "redis": "🟥"}.get(stype, "🧩")
+                line = f"{icon} **{name}** — `{stype}`\nID: `{sid}`"
+                if url:
+                    line += f"\n🔗 {url}"
+                lines.append(line)
+                services.append({"name": name, "id": sid, "type": stype})
+            return jsonify({
+                "reply": f"Tere {len(items)} Render services:\n\n" + "\n\n".join(lines),
+                "action": "render_list", "services": services
+            })
+        else:
+            return jsonify({"reply": f"❌ Render services fetch nahi hue: {r.text[:200]}", "action": "error"})
+
+    elif cmd == "RENDER_GET_ENV":
+        try:
+            data = json.loads(value)
+            service_id = data["service_id"]
+            r = rd_api("GET", f"/services/{service_id}/env-vars?limit=100")
+            if r.status_code == 200:
+                items = r.json()
+                if not items:
+                    return jsonify({"reply": f"Service `{service_id}` me koi env vars nahi hai.", "action": "render_env"})
+                lines = [f"`{item['envVar']['key']}` = `{item['envVar']['value']}`" for item in items]
+                return jsonify({
+                    "reply": f"Env vars for `{service_id}`:\n\n" + "\n".join(lines),
+                    "action": "render_env",
+                    "env_vars": {item["envVar"]["key"]: item["envVar"]["value"] for item in items}
+                })
+            else:
+                return jsonify({"reply": f"❌ Env vars fetch nahi hue: {r.text[:200]}", "action": "error"})
+        except json.JSONDecodeError as e:
+            return jsonify({"reply": f"❌ JSON parse error: {str(e)}", "action": "error"})
+        except Exception as e:
+            return jsonify({"reply": f"❌ Error: {str(e)}", "action": "error"})
+
+    elif cmd == "RENDER_SET_ENV":
+        try:
+            data = json.loads(value)
+            service_id = data["service_id"]
+            new_vars = data["env_vars"]
+
+            # Render's PUT replaces the full env var list, so fetch existing first and merge.
+            existing_r = rd_api("GET", f"/services/{service_id}/env-vars?limit=100")
+            existing = {}
+            if existing_r.status_code == 200:
+                for item in existing_r.json():
+                    existing[item["envVar"]["key"]] = item["envVar"]["value"]
+
+            existing.update(new_vars)
+            payload = [{"key": k, "value": v} for k, v in existing.items()]
+
+            r = rd_api("PUT", f"/services/{service_id}/env-vars", json=payload)
+            if r.status_code in (200, 201):
+                keys = ", ".join(new_vars.keys())
+                return jsonify({
+                    "reply": f"✅ Env vars update ho gaye for `{service_id}`!\nUpdated keys: `{keys}`\n\n⚠️ Service redeploy hoga automatically Render ki taraf se.",
+                    "action": "render_env_update"
+                })
+            else:
+                return jsonify({"reply": f"❌ Env update Error: {r.text[:200]}", "action": "error"})
+        except json.JSONDecodeError as e:
+            return jsonify({"reply": f"❌ JSON parse error: {str(e)}", "action": "error"})
+        except Exception as e:
+            return jsonify({"reply": f"❌ Error: {str(e)}", "action": "error"})
+
+    elif cmd == "RENDER_DEPLOY":
+        try:
+            data = json.loads(value)
+            service_id = data["service_id"]
+            clear_cache = data.get("clear_cache", False)
+
+            payload = {"clearCache": "clear" if clear_cache else "do_not_clear"}
+            r = rd_api("POST", f"/services/{service_id}/deploys", json=payload)
+            if r.status_code in (200, 201):
+                dep = r.json()
+                dep_id = dep.get("id", "")
+                status = dep.get("status", "queued")
+                cache_note = "(cache cleared)" if clear_cache else ""
+                return jsonify({
+                    "reply": f"🚀 Deploy trigger ho gaya for `{service_id}` {cache_note}\nDeploy ID: `{dep_id}`\nStatus: **{status}**",
+                    "action": "render_deploy", "deploy_id": dep_id, "status": status
+                })
+            else:
+                return jsonify({"reply": f"❌ Render deploy Error: {r.text[:200]}", "action": "error"})
+        except json.JSONDecodeError as e:
+            return jsonify({"reply": f"❌ JSON parse error: {str(e)}", "action": "error"})
+        except Exception as e:
+            return jsonify({"reply": f"❌ Error: {str(e)}", "action": "error"})
+
+    # ──────────────────────────────────────────────────────────
+    # PLAIN AI RESPONSE
+    # ──────────────────────────────────────────────────────────
     else:
         return jsonify({"reply": ai_text, "action": "message"})
 

@@ -1,449 +1,460 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
-  <title>GitHub Agent</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
+<title>DevOps Agent</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 
-    :root {
-      --bg:        #0d1117;
-      --surface:   #161b22;
-      --surface2:  #21262d;
-      --border:    #30363d;
-      --text:      #e6edf3;
-      --muted:     #8b949e;
-      --accent:    #58a6ff;
-      --green:     #3fb950;
-      --red:       #f85149;
-      --yellow:    #d29922;
-      --purple:    #bc8cff;
-      --font-mono: 'JetBrains Mono', monospace;
-      --font-sans: 'Inter', sans-serif;
-      --radius:    10px;
-    }
+  :root {
+    --bg-0:      #060c0d;
+    --bg-1:      #0a1416;
+    --surface:   rgba(255,255,255,0.04);
+    --surface-2: rgba(255,255,255,0.07);
+    --border:    rgba(255,255,255,0.09);
+    --border-2:  rgba(255,255,255,0.16);
+    --text:      #eef3f3;
+    --muted:     #7e9494;
+    --muted-2:   #54696a;
+    --accent:    #36d1ff;
+    --accent-2:  #6ee7ff;
+    --green:     #3ddc97;
+    --red:       #ff6b6b;
+    --yellow:    #ffc857;
+    --font-sans: 'Inter', -apple-system, sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+    --radius-lg: 22px;
+    --radius-md: 16px;
+    --radius-sm: 10px;
+  }
 
-    html, body {
-      height: 100%;
-      overflow: hidden;
-      background: var(--bg);
-      color: var(--text);
-      font-family: var(--font-sans);
-      font-size: 15px;
-    }
+  html, body {
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg-0);
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-size: 15px;
+    -webkit-font-smoothing: antialiased;
+  }
 
-    /* ── LAYOUT ── */
-    #app {
-      display: flex;
-      flex-direction: column;
-      height: 100dvh;
-    }
+  /* ── AMBIENT BACKGROUND ── */
+  #ambient {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background:
+      radial-gradient(ellipse 600px 500px at 50% 18%, rgba(54,209,255,0.10), transparent 65%),
+      radial-gradient(ellipse 800px 600px at 50% 100%, rgba(20,60,70,0.35), transparent 60%),
+      linear-gradient(180deg, var(--bg-1) 0%, var(--bg-0) 45%, #050909 100%);
+  }
 
-    /* ── HEADER ── */
-    header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 12px 16px;
-      background: var(--surface);
-      border-bottom: 1px solid var(--border);
-      gap: 10px;
-      flex-shrink: 0;
-    }
+  #app {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+  }
 
-    .header-left {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
+  /* ── HEADER ── */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px 10px;
+    flex-shrink: 0;
+  }
 
-    .logo {
-      width: 32px; height: 32px;
-      background: var(--accent);
-      border-radius: 8px;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 17px;
-      flex-shrink: 0;
-    }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--muted);
+    letter-spacing: 0.3px;
+  }
 
-    .header-title {
-      font-family: var(--font-mono);
-      font-size: 14px;
-      font-weight: 600;
-      color: var(--text);
-      line-height: 1.2;
-    }
+  .brand .mark {
+    width: 18px; height: 18px;
+    color: var(--accent);
+  }
 
-    .header-sub {
-      font-size: 11px;
-      color: var(--muted);
-      font-family: var(--font-mono);
-    }
+  .status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-family: var(--font-mono);
+    color: var(--muted-2);
+  }
 
-    .status-dot {
-      width: 8px; height: 8px;
-      background: var(--green);
-      border-radius: 50%;
-      animation: pulse 2s infinite;
-      flex-shrink: 0;
-    }
+  .status-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 8px rgba(61,220,151,0.7);
+    animation: pulse 2.2s infinite;
+  }
 
-    @keyframes pulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.4; }
-    }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.35; }
+  }
 
-    /* ── CONTEXT PILLS ── */
-    #context-bar {
-      display: flex;
-      gap: 8px;
-      padding: 8px 16px;
-      background: var(--surface);
-      border-bottom: 1px solid var(--border);
-      overflow-x: auto;
-      scrollbar-width: none;
-      flex-shrink: 0;
-    }
-    #context-bar::-webkit-scrollbar { display: none; }
-    #context-bar:empty { display: none; }
+  /* ── SCROLL AREA ── */
+  #scroll-area {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    display: flex;
+    flex-direction: column;
+    scrollbar-width: none;
+  }
+  #scroll-area::-webkit-scrollbar { display: none; }
 
-    .pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 4px 10px;
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      border-radius: 20px;
-      font-size: 12px;
-      font-family: var(--font-mono);
-      color: var(--accent);
-      white-space: nowrap;
-      cursor: default;
-    }
+  /* ── EMPTY STATE ── */
+  #empty-state {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 26px;
+    padding: 24px 28px 12px;
+    text-align: center;
+    min-height: 0;
+  }
 
-    .pill.repo { border-color: var(--accent); }
+  .emblem-ring {
+    width: 108px; height: 108px;
+    border-radius: 50%;
+    border: 1px solid rgba(54,209,255,0.22);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    animation: ring-breathe 4.5s ease-in-out infinite;
+  }
 
-    /* ── QUICK ACTIONS ── */
-    #quick-actions {
-      display: flex;
-      gap: 8px;
-      padding: 8px 16px;
-      overflow-x: auto;
-      scrollbar-width: none;
-      flex-shrink: 0;
-      border-bottom: 1px solid var(--border);
-    }
-    #quick-actions::-webkit-scrollbar { display: none; }
+  .emblem-ring::before {
+    content: '';
+    position: absolute;
+    inset: -22px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(54,209,255,0.16), transparent 70%);
+    filter: blur(4px);
+  }
 
-    .qa-btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
-      padding: 6px 12px;
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      border-radius: 20px;
-      font-size: 12px;
-      font-family: var(--font-mono);
-      color: var(--muted);
-      cursor: pointer;
-      white-space: nowrap;
-      transition: all 0.15s;
-      user-select: none;
-      -webkit-tap-highlight-color: transparent;
-    }
-    .qa-btn:active {
-      background: var(--surface);
-      color: var(--accent);
-      border-color: var(--accent);
-    }
+  @keyframes ring-breathe {
+    0%, 100% { transform: scale(1);    border-color: rgba(54,209,255,0.22); }
+    50%      { transform: scale(1.04); border-color: rgba(54,209,255,0.4); }
+  }
 
-    /* ── MESSAGES ── */
-    #messages {
-      flex: 1;
-      overflow-y: auto;
-      padding: 16px;
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-      scrollbar-width: thin;
-      scrollbar-color: var(--border) transparent;
-    }
+  .emblem-star {
+    width: 38px; height: 38px;
+    color: var(--accent-2);
+    filter: drop-shadow(0 0 14px rgba(110,231,255,0.65));
+    animation: star-pulse 4.5s ease-in-out infinite;
+  }
 
-    .msg-wrap {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      animation: fadeUp 0.2s ease;
-    }
+  @keyframes star-pulse {
+    0%, 100% { filter: drop-shadow(0 0 10px rgba(110,231,255,0.5)); }
+    50%      { filter: drop-shadow(0 0 20px rgba(110,231,255,0.85)); }
+  }
 
-    @keyframes fadeUp {
-      from { opacity: 0; transform: translateY(8px); }
-      to   { opacity: 1; transform: translateY(0); }
-    }
+  #empty-state h1 {
+    font-size: 21px;
+    font-weight: 600;
+    color: var(--text);
+    letter-spacing: -0.2px;
+  }
 
-    .msg-wrap.user { align-items: flex-end; }
-    .msg-wrap.agent { align-items: flex-start; }
+  #empty-state p {
+    max-width: 290px;
+    font-size: 13.5px;
+    line-height: 1.6;
+    color: var(--muted);
+  }
 
-    .msg-label {
-      font-size: 11px;
-      font-family: var(--font-mono);
-      color: var(--muted);
-      padding: 0 4px;
-    }
+  .chip-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
+    max-width: 340px;
+    margin-top: 4px;
+  }
 
-    .msg-bubble {
-      max-width: 88%;
-      padding: 12px 14px;
-      border-radius: var(--radius);
-      font-size: 14px;
-      line-height: 1.6;
-      word-break: break-word;
-    }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 9px 16px;
+    background: var(--surface);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--border);
+    border-radius: 100px;
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--muted);
+    cursor: pointer;
+    transition: background 0.18s, border-color 0.18s, color 0.18s, transform 0.12s;
+  }
 
-    .msg-wrap.user .msg-bubble {
-      background: var(--accent);
-      color: #fff;
-      border-bottom-right-radius: 3px;
-    }
+  .chip:active {
+    transform: scale(0.96);
+    background: var(--surface-2);
+    border-color: rgba(54,209,255,0.4);
+    color: var(--accent-2);
+  }
 
-    .msg-wrap.agent .msg-bubble {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      color: var(--text);
-      border-bottom-left-radius: 3px;
-    }
+  /* ── MESSAGES ── */
+  #messages {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 14px 18px 18px;
+  }
 
-    /* Action-colored borders */
-    .msg-bubble.success  { border-color: var(--green); }
-    .msg-bubble.error    { border-color: var(--red); }
-    .msg-bubble.warning  { border-color: var(--yellow); }
-    .msg-bubble.info     { border-color: var(--accent); }
+  .msg-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    animation: fadeUp 0.25s ease;
+    max-width: 100%;
+  }
 
-    /* Markdown-ish rendering */
-    .msg-bubble strong { font-weight: 600; color: var(--accent); }
-    .msg-bubble code {
-      font-family: var(--font-mono);
-      font-size: 12px;
-      background: var(--surface2);
-      padding: 1px 5px;
-      border-radius: 4px;
-      color: var(--green);
-    }
-    .msg-bubble pre {
-      margin-top: 8px;
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      padding: 10px;
-      overflow-x: auto;
-      font-size: 12px;
-      font-family: var(--font-mono);
-      color: var(--text);
-      white-space: pre-wrap;
-    }
-    .msg-bubble a {
-      color: var(--accent);
-      text-decoration: none;
-      font-family: var(--font-mono);
-      font-size: 12px;
-    }
-    .msg-bubble a:hover { text-decoration: underline; }
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
 
-    /* ── TYPING ── */
-    #typing-indicator {
-      display: none;
-      align-items: center;
-      gap: 10px;
-      padding: 0 4px;
-    }
-    #typing-indicator.show { display: flex; }
+  .msg-wrap.user  { align-items: flex-end; align-self: flex-end; }
+  .msg-wrap.agent { align-items: flex-start; align-self: flex-start; }
 
-    .typing-label {
-      font-size: 12px;
-      font-family: var(--font-mono);
-      color: var(--muted);
-    }
+  .msg-label {
+    font-size: 10.5px;
+    font-family: var(--font-mono);
+    color: var(--muted-2);
+    padding: 0 6px;
+    letter-spacing: 0.3px;
+  }
 
-    .typing-dots {
-      display: flex; gap: 4px;
-    }
-    .typing-dots span {
-      width: 6px; height: 6px;
-      background: var(--accent);
-      border-radius: 50%;
-      animation: bounce 1.2s infinite;
-    }
-    .typing-dots span:nth-child(2) { animation-delay: 0.2s; }
-    .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
-    @keyframes bounce {
-      0%, 80%, 100% { transform: scale(0.6); opacity: 0.5; }
-      40%           { transform: scale(1);   opacity: 1; }
-    }
+  .msg-bubble {
+    max-width: 86vw;
+    padding: 13px 16px;
+    border-radius: 18px;
+    font-size: 14px;
+    line-height: 1.6;
+    word-break: break-word;
+  }
 
-    /* ── INPUT AREA ── */
-    #input-area {
-      padding: 12px 16px;
-      padding-bottom: max(12px, env(safe-area-inset-bottom));
-      background: var(--surface);
-      border-top: 1px solid var(--border);
-      flex-shrink: 0;
-    }
+  .msg-wrap.user .msg-bubble {
+    background: linear-gradient(135deg, var(--accent) 0%, #1a9fd6 100%);
+    color: #04181c;
+    font-weight: 500;
+    border-bottom-right-radius: 5px;
+  }
 
-    .input-row {
-      display: flex;
-      gap: 8px;
-      align-items: flex-end;
-    }
+  .msg-wrap.agent .msg-bubble {
+    background: var(--surface);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-bottom-left-radius: 5px;
+  }
 
-    #userInput {
-      flex: 1;
-      min-height: 44px;
-      max-height: 120px;
-      padding: 11px 14px;
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      color: var(--text);
-      font-family: var(--font-sans);
-      font-size: 14px;
-      resize: none;
-      outline: none;
-      transition: border-color 0.15s;
-      line-height: 1.5;
-    }
-    #userInput:focus { border-color: var(--accent); }
-    #userInput::placeholder { color: var(--muted); }
+  .msg-bubble.success { border-color: rgba(61,220,151,0.4); }
+  .msg-bubble.error   { border-color: rgba(255,107,107,0.4); }
+  .msg-bubble.warning { border-color: rgba(255,200,87,0.4); }
+  .msg-bubble.info    { border-color: rgba(54,209,255,0.4); }
 
-    #sendBtn {
-      width: 44px; height: 44px;
-      background: var(--accent);
-      border: none;
-      border-radius: var(--radius);
-      cursor: pointer;
-      display: flex; align-items: center; justify-content: center;
-      flex-shrink: 0;
-      transition: opacity 0.15s, transform 0.1s;
-      -webkit-tap-highlight-color: transparent;
-    }
-    #sendBtn:active { opacity: 0.8; transform: scale(0.95); }
-    #sendBtn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .msg-bubble strong { font-weight: 600; color: var(--accent-2); }
+  .msg-bubble code {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    background: rgba(255,255,255,0.08);
+    padding: 1px 6px;
+    border-radius: 5px;
+    color: var(--green);
+  }
+  .msg-bubble pre {
+    margin-top: 8px;
+    background: rgba(0,0,0,0.35);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 11px;
+    overflow-x: auto;
+    font-size: 12px;
+    font-family: var(--font-mono);
+    color: var(--text);
+    white-space: pre-wrap;
+  }
+  .msg-bubble a {
+    color: var(--accent-2);
+    text-decoration: none;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    border-bottom: 1px solid rgba(110,231,255,0.3);
+  }
 
-    #sendBtn svg { width: 18px; height: 18px; fill: #fff; }
+  /* ── TYPING ── */
+  #typing-indicator {
+    display: none;
+    align-items: center;
+    gap: 10px;
+    padding: 2px 24px 8px;
+  }
+  #typing-indicator.show { display: flex; }
 
-    /* ── EMPTY STATE ── */
-    #empty-state {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 12px;
-      padding: 40px 20px;
-      text-align: center;
-      color: var(--muted);
-      font-size: 13px;
-    }
+  .typing-dots { display: flex; gap: 4px; }
+  .typing-dots span {
+    width: 6px; height: 6px;
+    background: var(--accent);
+    border-radius: 50%;
+    animation: bounce 1.2s infinite;
+  }
+  .typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+  .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes bounce {
+    0%, 80%, 100% { transform: scale(0.6); opacity: 0.5; }
+    40%           { transform: scale(1);   opacity: 1; }
+  }
 
-    #empty-state .empty-icon {
-      font-size: 40px;
-      margin-bottom: 4px;
-    }
+  /* ── DOCKED INPUT BAR ── */
+  #dock {
+    flex-shrink: 0;
+    padding: 10px 14px;
+    padding-bottom: max(14px, env(safe-area-inset-bottom));
+  }
 
-    #empty-state h2 {
-      font-family: var(--font-mono);
-      font-size: 16px;
-      color: var(--text);
-      font-weight: 600;
-    }
+  #chatbar {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    padding: 8px 8px 8px 16px;
+    background: rgba(255,255,255,0.055);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--border-2);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.06);
+    transition: border-color 0.18s, box-shadow 0.18s;
+  }
 
-    #empty-state p { max-width: 280px; line-height: 1.6; }
+  #chatbar:focus-within {
+    border-color: rgba(54,209,255,0.45);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.35), 0 0 0 3px rgba(54,209,255,0.08), inset 0 1px 0 rgba(255,255,255,0.06);
+  }
 
-    .example-chips {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-      justify-content: center;
-      margin-top: 4px;
-    }
+  .clip-btn {
+    width: 32px; height: 36px;
+    flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--muted);
+    background: none;
+    border: none;
+    cursor: pointer;
+    transition: color 0.15s;
+  }
+  .clip-btn:active { color: var(--accent-2); }
+  .clip-btn svg { width: 19px; height: 19px; }
 
-    .chip {
-      padding: 6px 12px;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 20px;
-      font-size: 12px;
-      font-family: var(--font-mono);
-      color: var(--accent);
-      cursor: pointer;
-      transition: all 0.15s;
-      -webkit-tap-highlight-color: transparent;
-    }
-    .chip:active {
-      background: var(--surface2);
-      border-color: var(--accent);
-    }
-  </style>
+  #userInput {
+    flex: 1;
+    min-height: 24px;
+    max-height: 120px;
+    padding: 7px 2px;
+    background: transparent;
+    border: none;
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 1.45;
+    resize: none;
+    outline: none;
+  }
+  #userInput::placeholder { color: var(--muted-2); }
+
+  #sendBtn {
+    width: 38px; height: 38px;
+    flex-shrink: 0;
+    background: linear-gradient(135deg, var(--accent-2), var(--accent));
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: opacity 0.15s, transform 0.1s;
+    box-shadow: 0 2px 12px rgba(54,209,255,0.35);
+  }
+  #sendBtn:active { transform: scale(0.92); }
+  #sendBtn:disabled { opacity: 0.35; box-shadow: none; }
+  #sendBtn svg { width: 16px; height: 16px; fill: #04181c; margin-left: 1px; }
+
+  .footnote {
+    text-align: center;
+    font-size: 10.5px;
+    color: var(--muted-2);
+    padding-top: 9px;
+    letter-spacing: 0.2px;
+  }
+</style>
 </head>
 <body>
+<div id="ambient"></div>
 <div id="app">
 
-  <!-- HEADER -->
   <header>
-    <div class="header-left">
-      <div class="logo">⚡</div>
-      <div>
-        <div class="header-title">GitHub Agent</div>
-        <div class="header-sub" id="username-label">Connecting...</div>
-      </div>
+    <div class="brand">
+      <svg class="mark" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 14.2 9.2 21.5 11.5 14.2 13.8 12 21 9.8 13.8 2.5 11.5 9.8 9.2Z"/></svg>
+      DevOps Agent
     </div>
-    <div style="display:flex;align-items:center;gap:8px;">
-      <span style="font-size:11px;font-family:var(--font-mono);color:var(--muted)">AI Online</span>
+    <div class="status">
+      <span id="status-label">Online</span>
       <div class="status-dot"></div>
     </div>
   </header>
 
-  <!-- CONTEXT BAR -->
-  <div id="context-bar"></div>
-
-  <!-- QUICK ACTIONS -->
-  <div id="quick-actions">
-    <button class="qa-btn" onclick="quickAction('Mere saare repos list kar')">📁 List Repos</button>
-    <button class="qa-btn" onclick="quickAction('Ek naya repo bana')">➕ New Repo</button>
-    <button class="qa-btn" onclick="quickAction('Last repo me index.html file bana ek basic HTML page')">📄 New File</button>
-    <button class="qa-btn" onclick="quickAction('Current active repo ki sari files dikha')">🔍 List Files</button>
-    <button class="qa-btn" onclick="clearChat()">🗑️ Clear</button>
-  </div>
-
-  <!-- MESSAGES -->
-  <div id="messages">
+  <div id="scroll-area">
     <div id="empty-state">
-      <div class="empty-icon">🤖</div>
-      <h2>GitHub Agent Ready</h2>
-      <p>Repos banana, files likhna, code edit karna — sab bol bas.</p>
-      <div class="example-chips">
-        <div class="chip" onclick="fillInput('calculator-app repo bana')">calculator-app repo bana</div>
-        <div class="chip" onclick="fillInput('my-portfolio me index.html bana')">portfolio me index.html bana</div>
-        <div class="chip" onclick="fillInput('Saare repos dikha')">Saare repos dikha</div>
-        <div class="chip" onclick="fillInput('test-repo ko delete kar')">test-repo delete kar</div>
+      <div class="emblem-ring">
+        <svg class="emblem-star" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 14.2 9.2 21.5 11.5 14.2 13.8 12 21 9.8 13.8 2.5 11.5 9.8 9.2Z"/></svg>
+      </div>
+      <div>
+        <h1>DevOps Agent se baatein karein</h1>
+        <p>GitHub repos banao, Vercel pe deploy karo, Render services manage karo — sab ek jagah.</p>
+      </div>
+      <div class="chip-row">
+        <div class="chip" onclick="fillInput('Saare GitHub repos list kar')">📁 List GitHub repos</div>
+        <div class="chip" onclick="fillInput('Mera portfolio repo Vercel pe deploy kar')">▲ Deploy repo to Vercel</div>
+        <div class="chip" onclick="fillInput('Saare Render services list kar')">🌐 List Render services</div>
+        <div class="chip" onclick="fillInput('Naya repo bana naam ke saath my-app')">➕ Create new repo</div>
       </div>
     </div>
+
+    <div id="messages"></div>
+
     <div id="typing-indicator">
-      <div class="typing-dots">
-        <span></span><span></span><span></span>
-      </div>
-      <span class="typing-label">Agent soch raha hai...</span>
+      <div class="typing-dots"><span></span><span></span><span></span></div>
     </div>
   </div>
 
-  <!-- INPUT -->
-  <div id="input-area">
-    <div class="input-row">
+  <div id="dock">
+    <div id="chatbar">
+      <button class="clip-btn" title="Attach" onclick="notifyNoAttach()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/>
+        </svg>
+      </button>
       <textarea id="userInput"
-        placeholder="Bol bhai... 'portfolio repo bana aur index.html add kar'"
+        placeholder="Message DevOps Agent…"
         rows="1"
         onkeydown="handleKey(event)"
         oninput="autoResize(this)"
@@ -452,27 +463,15 @@
         <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
       </button>
     </div>
+    <div class="footnote">DevOps Agent can make mistakes. Verify deployments before relying on them.</div>
   </div>
 
 </div>
 
 <script>
 // ── STATE ──
-const history = [];  // [{role, content}]
-let activeRepo = null;
+const history = [];
 let isLoading = false;
-
-// ── INIT ──
-document.addEventListener('DOMContentLoaded', () => {
-  const label = document.getElementById('username-label');
-  // Fetch username from backend
-  fetch('/chat', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({ message: 'SYSTEM_PING', history: [] })
-  }).catch(() => {});
-  label.textContent = 'GitHub Agent v2';
-});
 
 // ── TEXTAREA AUTO RESIZE ──
 function autoResize(el) {
@@ -488,12 +487,6 @@ function handleKey(e) {
   }
 }
 
-// ── QUICK ACTIONS ──
-function quickAction(text) {
-  document.getElementById('userInput').value = text;
-  sendMsg();
-}
-
 function fillInput(text) {
   const input = document.getElementById('userInput');
   input.value = text;
@@ -501,55 +494,18 @@ function fillInput(text) {
   autoResize(input);
 }
 
-// ── CLEAR ──
-function clearChat() {
-  history.length = 0;
-  activeRepo = null;
-  document.getElementById('messages').innerHTML = `
-    <div id="empty-state">
-      <div class="empty-icon">🤖</div>
-      <h2>GitHub Agent Ready</h2>
-      <p>Repos banana, files likhna, code edit karna — sab bol bas.</p>
-      <div class="example-chips">
-        <div class="chip" onclick="fillInput('calculator-app repo bana')">calculator-app repo bana</div>
-        <div class="chip" onclick="fillInput('my-portfolio me index.html bana')">portfolio me index.html bana</div>
-        <div class="chip" onclick="fillInput('Saare repos dikha')">Saare repos dikha</div>
-        <div class="chip" onclick="fillInput('test-repo ko delete kar')">test-repo delete kar</div>
-      </div>
-    </div>
-    <div id="typing-indicator">
-      <div class="typing-dots"><span></span><span></span><span></span></div>
-      <span class="typing-label">Agent soch raha hai...</span>
-    </div>`;
-  updateContextBar();
-}
-
-// ── CONTEXT BAR ──
-function updateContextBar() {
-  const bar = document.getElementById('context-bar');
-  bar.innerHTML = '';
-  if (activeRepo) {
-    bar.innerHTML = `<div class="pill repo">📁 ${activeRepo}</div>`;
-  }
-  if (history.length > 0) {
-    bar.innerHTML += `<div class="pill">💬 ${Math.ceil(history.length / 2)} messages</div>`;
-  }
+function notifyNoAttach() {
+  // Placeholder hook for future attachment support (images / PDFs).
+  const input = document.getElementById('userInput');
+  input.focus();
 }
 
 // ── MARKDOWN RENDERER (lightweight) ──
 function renderMarkdown(text) {
-  // Code blocks
-  text = text.replace(/```([\s\S]*?)```/g, (_, code) =>
-    `<pre>${escHtml(code.trim())}</pre>`);
-  // Inline code
-  text = text.replace(/`([^`]+)`/g, (_, code) =>
-    `<code>${escHtml(code)}</code>`);
-  // Bold
+  text = text.replace(/```([\s\S]*?)```/g, (_, code) => `<pre>${escHtml(code.trim())}</pre>`);
+  text = text.replace(/`([^`]+)`/g, (_, code) => `<code>${escHtml(code)}</code>`);
   text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-  // Links
-  text = text.replace(/(https?:\/\/[^\s<]+)/g,
-    '<a href="$1" target="_blank" rel="noopener">$1</a>');
-  // Line breaks
+  text = text.replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
   text = text.replace(/\n/g, '<br>');
   return text;
 }
@@ -560,19 +516,17 @@ function escHtml(t) {
 
 // ── ADD MESSAGE ──
 function addMessage(role, content, actionClass = '') {
-  // Remove empty state
   const es = document.getElementById('empty-state');
-  if (es) es.remove();
+  if (es) es.style.display = 'none';
 
   const messages = document.getElementById('messages');
-  const typing   = document.getElementById('typing-indicator');
 
   const wrap = document.createElement('div');
   wrap.className = `msg-wrap ${role}`;
 
   const label = document.createElement('div');
   label.className = 'msg-label';
-  label.textContent = role === 'user' ? 'You' : '⚡ Agent';
+  label.textContent = role === 'user' ? 'You' : 'Agent';
 
   const bubble = document.createElement('div');
   bubble.className = `msg-bubble ${actionClass}`;
@@ -580,10 +534,14 @@ function addMessage(role, content, actionClass = '') {
 
   wrap.appendChild(label);
   wrap.appendChild(bubble);
+  messages.appendChild(wrap);
 
-  // Insert before typing indicator
-  messages.insertBefore(wrap, typing);
-  messages.scrollTop = messages.scrollHeight;
+  scrollToBottom();
+}
+
+function scrollToBottom() {
+  const area = document.getElementById('scroll-area');
+  requestAnimationFrame(() => { area.scrollTop = area.scrollHeight; });
 }
 
 // ── SEND ──
@@ -591,7 +549,7 @@ async function sendMsg() {
   if (isLoading) return;
 
   const input = document.getElementById('userInput');
-  const msg   = input.value.trim();
+  const msg = input.value.trim();
   if (!msg) return;
 
   isLoading = true;
@@ -602,10 +560,9 @@ async function sendMsg() {
   addMessage('user', msg);
   history.push({ role: 'user', content: msg });
 
-  // Show typing
   const typing = document.getElementById('typing-indicator');
   typing.classList.add('show');
-  document.getElementById('messages').scrollTop = 9999;
+  scrollToBottom();
 
   try {
     const res = await fetch('/chat', {
@@ -617,22 +574,18 @@ async function sendMsg() {
     const data = await res.json();
     typing.classList.remove('show');
 
-    // Determine bubble color class
     const actionColors = {
       create_repo: 'success', delete_repo: 'success',
       create_file: 'success', update_file: 'success', delete_file: 'success',
       list_repos: 'info', list_files: 'info', read_file: 'info',
+      vercel_list: 'info', vercel_import: 'success', vercel_deploy: 'success', vercel_status: 'info',
+      render_list: 'info', render_env: 'info', render_env_update: 'success', render_deploy: 'success',
       error: 'error', warning: 'warning', message: ''
     };
     const cls = actionColors[data.action] || '';
 
     addMessage('agent', data.reply, cls);
     history.push({ role: 'assistant', content: data.reply });
-
-    // Update context
-    if (data.repo) activeRepo = data.repo;
-    if (data.action === 'delete_repo') activeRepo = null;
-    updateContextBar();
 
   } catch (err) {
     typing.classList.remove('show');
