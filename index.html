@@ -276,6 +276,36 @@
   .msg-bubble.warning { border-color: rgba(255,200,87,0.4); }
   .msg-bubble.info    { border-color: rgba(54,209,255,0.4); }
 
+  .confirm-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+  }
+  .confirm-btn {
+    flex: 1;
+    padding: 10px 14px;
+    border-radius: 10px;
+    border: 1px solid;
+    font-size: 13px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: opacity .15s, transform .1s;
+  }
+  .confirm-btn:active { opacity: .8; transform: scale(.97); }
+  .confirm-btn.danger {
+    background: rgba(255,107,107,0.12);
+    border-color: rgba(255,107,107,0.5);
+    color: #ff6b6b;
+  }
+  .confirm-btn.cancel {
+    background: rgba(255,255,255,0.04);
+    border-color: rgba(255,255,255,0.12);
+    color: var(--text-dim, #9aa4b2);
+  }
+  .confirm-btn:disabled { opacity: .5; cursor: not-allowed; }
+
   .msg-bubble strong { font-weight: 600; color: var(--accent-2); }
   .msg-bubble code {
     font-family: var(--font-mono);
@@ -515,7 +545,7 @@ function escHtml(t) {
 }
 
 // ── ADD MESSAGE ──
-function addMessage(role, content, actionClass = '') {
+function addMessage(role, content, actionClass = '', confirmData = null) {
   const es = document.getElementById('empty-state');
   if (es) es.style.display = 'none';
 
@@ -534,9 +564,79 @@ function addMessage(role, content, actionClass = '') {
 
   wrap.appendChild(label);
   wrap.appendChild(bubble);
-  messages.appendChild(wrap);
 
+  if (confirmData) {
+    const actions = document.createElement('div');
+    actions.className = 'confirm-actions';
+
+    const yesBtn = document.createElement('button');
+    yesBtn.className = 'confirm-btn danger';
+    yesBtn.textContent = 'Haan, Delete Karo';
+    yesBtn.onclick = () => runConfirmedAction(confirmData, yesBtn, noBtn);
+
+    const noBtn = document.createElement('button');
+    noBtn.className = 'confirm-btn cancel';
+    noBtn.textContent = 'Cancel';
+    noBtn.onclick = () => {
+      yesBtn.disabled = true;
+      noBtn.disabled = true;
+      addMessage('agent', 'Theek hai, cancel kar diya. Kuch delete nahi hua.', '');
+    };
+
+    actions.appendChild(yesBtn);
+    actions.appendChild(noBtn);
+    bubble.appendChild(actions);
+  }
+
+  messages.appendChild(wrap);
   scrollToBottom();
+}
+
+// ── CONFIRMED DESTRUCTIVE ACTION ──
+async function runConfirmedAction(confirmData, yesBtn, noBtn) {
+  yesBtn.disabled = true;
+  noBtn.disabled = true;
+  yesBtn.textContent = 'Delete ho raha hai...';
+
+  const typing = document.getElementById('typing-indicator');
+  typing.classList.add('show');
+  scrollToBottom();
+
+  try {
+    const res = await fetch('/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        confirmed: true,
+        pending_command: confirmData.pending_command,
+        pending_value: confirmData.pending_value,
+        confirm_token: confirmData.confirm_token
+      })
+    });
+    const data = await res.json();
+    typing.classList.remove('show');
+
+    const cls = actionColorFor(data.action);
+    addMessage('agent', data.reply, cls);
+    history.push({ role: 'assistant', content: data.reply });
+  } catch (err) {
+    typing.classList.remove('show');
+    addMessage('agent', '❌ Server se connect nahi ho paya. Page refresh karo.', 'error');
+  }
+}
+
+function actionColorFor(action) {
+  const actionColors = {
+    create_repo: 'success', delete_repo: 'success',
+    create_file: 'success', update_file: 'success', delete_file: 'success',
+    list_repos: 'info', list_files: 'info', read_file: 'info',
+    vercel_list: 'info', vercel_import: 'success', vercel_deploy: 'success', vercel_status: 'info',
+    vercel_delete_project: 'success',
+    render_list: 'info', render_env: 'info', render_env_update: 'success', render_deploy: 'success',
+    confirm_required: 'warning',
+    error: 'error', warning: 'warning', message: ''
+  };
+  return actionColors[action] || '';
 }
 
 function scrollToBottom() {
@@ -574,16 +674,18 @@ async function sendMsg() {
     const data = await res.json();
     typing.classList.remove('show');
 
-    const actionColors = {
-      create_repo: 'success', delete_repo: 'success',
-      create_file: 'success', update_file: 'success', delete_file: 'success',
-      list_repos: 'info', list_files: 'info', read_file: 'info',
-      vercel_list: 'info', vercel_import: 'success', vercel_deploy: 'success', vercel_status: 'info',
-      render_list: 'info', render_env: 'info', render_env_update: 'success', render_deploy: 'success',
-      error: 'error', warning: 'warning', message: ''
-    };
-    const cls = actionColors[data.action] || '';
+    if (data.action === 'confirm_required') {
+      addMessage('agent', data.reply, 'warning', {
+        pending_command: data.pending_command,
+        pending_value: data.pending_value,
+        confirm_token: data.confirm_token
+      });
+      // Don't push this into history as a normal assistant turn — it's a
+      // UI-only prompt, the real outcome message gets pushed after confirm/cancel.
+      return;
+    }
 
+    const cls = actionColorFor(data.action);
     addMessage('agent', data.reply, cls);
     history.push({ role: 'assistant', content: data.reply });
 

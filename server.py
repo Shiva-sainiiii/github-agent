@@ -205,6 +205,21 @@ def looks_fabricated(text):
     return hits >= 2
 
 
+DESTRUCTIVE_COMMANDS = {"DELETE_REPO", "DELETE_FILE", "VERCEL_DELETE_PROJECT"}
+
+
+def confirm_token(cmd, value):
+    """Deterministic token binding a specific (command, value) pair, so a client
+    can only 'confirm' the exact destructive action that was actually proposed —
+    it can't be reused to silently confirm a different repo/project/file later.
+    Not a security boundary against a malicious client (this app has no auth layer
+    at all), just a guard against accidental/buggy confirmation of the wrong thing.
+    """
+    import hashlib
+    raw = f"{cmd}:{value or ''}"
+    return hashlib.sha256(raw.encode()).hexdigest()[:16]
+
+
 def extract_command(text):
     """Robustly extract a single command (and its payload) from the AI response.
 
@@ -376,42 +391,105 @@ def chat():
     user_message = body.get("message", "").strip()
     history = body.get("history", [])
 
-    if not user_message:
-        return safe_jsonify({"reply": "Kuch toh bol bhai 😅", "action": None})
+    # ──────────────────────────────────────────────────────────
+    # CONFIRMED DESTRUCTIVE ACTION REPLAY
+    # When the user taps "Haan, Delete Karo" on a confirmation card, the
+    # frontend re-sends the EXACT pending_command/pending_value/confirm_token
+    # we issued earlier instead of a new chat message. We verify the token
+    # matches that exact (command, value) pair, then skip straight past the
+    # AI call below and go directly into the handler chain with this cmd/value —
+    # no AI call, no re-parsing, nothing can be substituted for something else.
+    # ──────────────────────────────────────────────────────────
+    is_confirm_replay = bool(body.get("confirmed") and body.get("pending_command"))
 
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
-    for h in history[-10:]:
-        messages.append({"role": h["role"], "content": h["content"]})
-    messages.append({"role": "user", "content": user_message})
+    if is_confirm_replay:
+        cmd = body.get("pending_command")
+        value = body.get("pending_value")
+        token = body.get("confirm_token")
+        if cmd not in DESTRUCTIVE_COMMANDS or token != confirm_token(cmd, value):
+            return safe_jsonify({"reply": "❌ Confirmation token match nahi hua. Dobara try kar.", "action": "error"})
+        # cmd/value are now set — execution continues at the handler chain
+        # further down, skipping the AI-call block entirely (see `if not is_confirm_replay:` below).
 
-    try:
-        ai_resp = requests.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {OPENROUTER_KEY}",
-                "Content-Type": "application/json",
-                "HTTP-Referer": "https://github-agent-r7rn.onrender.com",
-                "X-Title": "Multi-Cloud DevOps Agent"
-            },
-            json={
-                "model": "nvidia/nemotron-3-super-120b-a12b:free",
-                "messages": messages,
-                "temperature": 0.2
-            },
-            timeout=30
-        ).json()
+    else:
+        if not user_message:
+            return safe_jsonify({"reply": "Kuch toh bol bhai 😅", "action": None})
 
-        if "error" in ai_resp:
-            return safe_jsonify({"reply": f"AI Error: {ai_resp['error'].get('message', 'Unknown error')}", "action": "error"})
+        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+        for h in history[-10:]:
+            messages.append({"role": h["role"], "content": h["content"]})
+        messages.append({"role": "user", "content": user_message})
 
-        ai_text = ai_resp["choices"][0]["message"]["content"].strip()
+        try:
+            ai_resp = requests.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {OPENROUTER_KEY}",
+                    "Content-Type": "application/json",
+                    "HTTP-Referer": "https://github-agent-r7rn.onrender.com",
+                    "X-Title": "Multi-Cloud DevOps Agent"
+                },
+                json={
+                    "model": "nvidia/nemotron-3-super-120b-a12b:free",
+                    "messages": messages,
+                    "temperature": 0.2
+                },
+                timeout=30
+            ).json()
 
-    except requests.Timeout:
-        return safe_jsonify({"reply": "AI ne jawab dene me bahut time lagaya. Dobara try karo 🔄", "action": "error"})
-    except Exception as e:
-        return safe_jsonify({"reply": f"AI connection error: {str(e)}", "action": "error"})
+            if "error" in ai_resp:
+                return safe_jsonify({"reply": f"AI Error: {ai_resp['error'].get('message', 'Unknown error')}", "action": "error"})
 
-    cmd, value = extract_command(ai_text)
+            ai_text = ai_resp["choices"][0]["message"]["content"].strip()
+
+        except requests.Timeout:
+            return safe_jsonify({"reply": "AI ne jawab dene me bahut time lagaya. Dobara try karo 🔄", "action": "error"})
+        except Exception as e:
+            return safe_jsonify({"reply": f"AI connection error: {str(e)}", "action": "error"})
+
+        cmd, value = extract_command(ai_text)
+
+    # ──────────────────────────────────────────────────────────
+    # DESTRUCTIVE-ACTION CONFIRMATION GATE
+    # Runs before ANY handler, but ONLY for freshly-parsed commands — a
+    # confirm-replay has already been verified above and must not be asked
+    # to confirm itself again (that would create an infinite confirm loop).
+    # If the resolved command is destructive and this isn't a verified
+    # replay, we stop here and ask — we never delete anything on the first
+    # pass, regardless of how confident the AI/parser was.
+    # ──────────────────────────────────────────────────────────
+    if cmd in DESTRUCTIVE_COMMANDS and not is_confirm_replay:
+        # Fresh AI/parser pass — always ask first. (A verified replay, which
+        # is the only legitimate way to skip this, took the other branch above.)
+        expected_token = confirm_token(cmd, value)
+
+        # Build a human-readable description of what's about to happen.
+        target_desc = value
+        if value and value.strip().startswith("{"):
+            try:
+                parsed = json.loads(value)
+                if cmd == "DELETE_FILE":
+                    target_desc = f"`{parsed.get('path')}` in repo `{parsed.get('repo')}`"
+                elif cmd == "VERCEL_DELETE_PROJECT":
+                    target_desc = f"Vercel project `{parsed.get('project_name')}`"
+            except Exception:
+                pass
+        elif cmd == "DELETE_REPO":
+            target_desc = f"GitHub repo `{value.strip()}`"
+
+        warn_text = {
+            "DELETE_REPO": "Ye permanently delete ho jayega — saara code, history, sab kuch. Wapas nahi aayega.",
+            "DELETE_FILE": "Ye file repo se permanently hat jayegi.",
+            "VERCEL_DELETE_PROJECT": "Vercel project aur uski saari deployments delete ho jayengi (GitHub repo safe rahega).",
+        }[cmd]
+
+        return safe_jsonify({
+            "reply": f"⚠️ **Pakka?**\n\n{target_desc} delete karne wala hu.\n\n{warn_text}",
+            "action": "confirm_required",
+            "pending_command": cmd,
+            "pending_value": value,
+            "confirm_token": expected_token
+        })
 
     # ──────────────────────────────────────────────────────────
     # GITHUB
