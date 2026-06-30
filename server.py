@@ -131,19 +131,24 @@ You act by outputting EXACTLY ONE command per response. Never combine commands. 
 12. VERCEL_DEPLOY_STATUS: {{"deployment_id":"dpl_xxx"}}
     Checks the status of a deployment (use the deployment_id returned by VERCEL_DEPLOY).
 
+13. VERCEL_DELETE_PROJECT: {{"project_name":"project-name"}}
+    Permanently deletes a Vercel project (all its deployments too). This does NOT delete the
+    GitHub repo — only the Vercel project/connection. Ask the user to confirm if they just said
+    "delete X" casually without clearly meaning the Vercel project, since this is irreversible.
+
 ──────────────── RENDER COMMANDS ────────────────
 
-13. RENDER_LIST_SERVICES
+14. RENDER_LIST_SERVICES
     (no argument needed) — lists all web services, static sites, and databases on Render.
 
-14. RENDER_GET_ENV: {{"service_id":"srv-xxx"}}
+15. RENDER_GET_ENV: {{"service_id":"srv-xxx"}}
     Fetches current environment variables for a Render service.
 
-15. RENDER_SET_ENV: {{"service_id":"srv-xxx","env_vars":{{"KEY":"value","KEY2":"value2"}}}}
+16. RENDER_SET_ENV: {{"service_id":"srv-xxx","env_vars":{{"KEY":"value","KEY2":"value2"}}}}
     Updates/adds environment variables on a Render service (merges with existing — does not wipe unspecified keys
     unless the platform requires a full replace, in which case fetch existing first via RENDER_GET_ENV).
 
-16. RENDER_DEPLOY: {{"service_id":"srv-xxx","clear_cache":true}}
+17. RENDER_DEPLOY: {{"service_id":"srv-xxx","clear_cache":true}}
     Triggers a manual deploy. clear_cache defaults to false if omitted.
 
 ──────────────── RULES ────────────────
@@ -152,17 +157,17 @@ You act by outputting EXACTLY ONE command per response. Never combine commands. 
 - JSON must be valid — no trailing commas, proper double quotes.
 - For code in content field, escape double quotes as \\" and newlines as \\n.
 - Always write complete working code, never truncate.
-- If the user asks something outside these 16 commands, respond conversationally with no command — explain what you can/can't do.
+- If the user asks something outside these 17 commands, respond conversationally with no command — explain what you can/can't do.
 - You have full context of the conversation above. Use repo/project/service names mentioned earlier if the user refers back to them ("that repo", "the service", "it").
 - When a user asks to "deploy X to Vercel" and X isn't a known Vercel project yet, first use VERCEL_IMPORT_REPO, then on the next turn VERCEL_DEPLOY.
 - Vercel auto-deploys on every git push once a repo is imported — VERCEL_DEPLOY is only needed to force a redeploy of the current branch without a new commit. After VERCEL_IMPORT_REPO, the import itself already triggers the first deployment.
 
 ──────────────── ABSOLUTE ANTI-HALLUCINATION RULE ────────────────
 
-You have NO knowledge of real deployment IDs, live URLs, service IDs, API keys, environment variable values, or any other infrastructure state. ALL of that only exists in the actual GitHub/Vercel/Render APIs, which you can reach ONLY by emitting one of the 16 commands above.
+You have NO knowledge of real deployment IDs, live URLs, service IDs, API keys, environment variable values, or any other infrastructure state. ALL of that only exists in the actual GitHub/Vercel/Render APIs, which you can reach ONLY by emitting one of the 17 commands above.
 
-- NEVER write a deployment ID, project URL, service ID, status, or env var value yourself. If you don't have one of the 16 commands to run, you do not have this information — say so plainly instead of inventing it.
-- NEVER format your own conversational text to look like a tool result (no fake ✅/❌ icons, no fake "Status:", "Deployment ID:", "Live URL:" labels, no fake code blocks claiming to be API output) unless you are literally emitting one of the 16 commands for the system to execute.
+- NEVER write a deployment ID, project URL, service ID, status, or env var value yourself. If you don't have one of the 17 commands to run, you do not have this information — say so plainly instead of inventing it.
+- NEVER format your own conversational text to look like a tool result (no fake ✅/❌ icons, no fake "Status:", "Deployment ID:", "Live URL:" labels, no fake code blocks claiming to be API output) unless you are literally emitting one of the 17 commands for the system to execute.
 - NEVER output anything that resembles a real secret, token, or API key (e.g. strings starting with sk-, ghp_, vercel_, rnd_, Bearer, or long random-looking alphanumeric strings) under any circumstance, even as an example or placeholder filled with realistic-looking characters. Use literal text like <your-token-here> for placeholders.
 - If you are not emitting a command, your entire response must be plain conversational text with no fabricated data points standing in for real ones.
 """
@@ -172,6 +177,7 @@ COMMANDS = [
     "CREATE_REPO:", "DELETE_REPO:", "LIST_REPOS", "CREATE_FILE:",
     "READ_FILE:", "EDIT_FILE:", "DELETE_FILE:", "LIST_FILES:",
     "VERCEL_LIST_PROJECTS", "VERCEL_IMPORT_REPO:", "VERCEL_DEPLOY:", "VERCEL_DEPLOY_STATUS:",
+    "VERCEL_DELETE_PROJECT:",
     "RENDER_LIST_SERVICES", "RENDER_GET_ENV:", "RENDER_SET_ENV:", "RENDER_DEPLOY:",
 ]
 
@@ -737,6 +743,35 @@ def chat():
                 return safe_jsonify({"reply": reply, "action": "vercel_status", "state": state})
             else:
                 return safe_jsonify({"reply": f"❌ Status fetch nahi hua: {r.text[:200]}", "action": "error"})
+        except json.JSONDecodeError as e:
+            return safe_jsonify({"reply": f"❌ JSON parse error: {str(e)}", "action": "error"})
+        except Exception as e:
+            return safe_jsonify({"reply": f"❌ Error: {str(e)}", "action": "error"})
+
+    elif cmd == "VERCEL_DELETE_PROJECT":
+        try:
+            data = json.loads(value)
+            project_name = data["project_name"]
+
+            # Resolve to the real project first so we report an honest "not found"
+            # instead of trusting Vercel to interpret an arbitrary name string.
+            proj = vercel_find_project(project_name)
+            if not proj:
+                return safe_jsonify({
+                    "reply": f"❌ Vercel project `{project_name}` nahi mila — pehle hi delete ho chuka ya naam galat hai.",
+                    "action": "error"
+                })
+
+            proj_id = proj.get("id")
+            r = vc_api("DELETE", f"/v9/projects/{proj_id}")
+            if r.status_code in (200, 204):
+                return safe_jsonify({
+                    "reply": f"✅ Vercel project `{project_name}` delete ho gaya.\n\n⚠️ Yeh sirf Vercel se hata hai — GitHub repo abhi bhi waisa hi hai.",
+                    "action": "vercel_delete_project", "project_name": project_name
+                })
+            else:
+                err = r.json().get("error", {}).get("message", r.text[:200]) if r.text else r.text[:200]
+                return safe_jsonify({"reply": f"❌ Vercel project delete Error: {err}", "action": "error"})
         except json.JSONDecodeError as e:
             return safe_jsonify({"reply": f"❌ JSON parse error: {str(e)}", "action": "error"})
         except Exception as e:
