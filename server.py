@@ -970,6 +970,102 @@ INTENT_RULES = [
         rf"repo(?:sitory)?\s+({SLUG})\s+(?:delete|uda(?:\s*do)?|hata(?:o|\s*do)?|remove)\s*(?:karo|kar\s*do)?$",
     ], lambda m: {"repo": _g(m, 1)}),
 
+    # ── GITHUB: branches / PRs / commits / issues / repo-meta ──
+    # All inserted here (after DELETE_REPO, before LIST_REPOS) because
+    # LIST_REPOS below has the loosest GitHub pattern (bare ".*\brepos?\b")
+    # and must stay last in the GitHub block per existing convention.
+    ("CREATE_BRANCH", [
+        # verb-first: "create branch NAME in REPO"
+        rf"(?:create|bnao|banao|naya|new)\s+(?:a\s+)?branch\s+({SLUG})\s+(?:in|for|of)\s+({SLUG})",
+    ], lambda m: {"branch": _g(m, 1), "repo": _g(m, 2)}),
+
+    ("CREATE_BRANCH", [
+        # verb-final: "REPO me branch NAME banao" / "...create karo"
+        rf"({SLUG})\s+me\s+branch\s+({SLUG})\s+(?:banao|bnao|create\s*karo|bana\s*do)",
+    ], lambda m: {"repo": _g(m, 1), "branch": _g(m, 2)}),
+
+    ("DELETE_BRANCH", [
+        # verb-first: "delete branch NAME from REPO"
+        rf"(?:delete|uda|udado|hata|hatao|remove)\s+(?:the\s+)?branch\s+({SLUG})\s+(?:from|in|of)\s+({SLUG})",
+    ], lambda m: {"branch": _g(m, 1), "repo": _g(m, 2)}),
+
+    ("DELETE_BRANCH", [
+        # verb-final: "REPO se branch NAME hatao" / "...delete karo"
+        rf"({SLUG})\s+se\s+branch\s+({SLUG})\s+(?:hatao|uda(?:o|\s*do)?|delete\s*karo)",
+    ], lambda m: {"repo": _g(m, 1), "branch": _g(m, 2)}),
+
+    ("CREATE_PR", [
+        # verb-first: "create pr from HEAD to BASE in REPO"
+        rf"(?:create|bnao|banao|naya|new)\s+(?:a\s+)?(?:pr|pull\s*request)\s+"
+        rf"from\s+({SLUG})\s+to\s+({SLUG})\s+(?:in|for|of)\s+({SLUG})",
+    ], lambda m: {"head": _g(m, 1), "base": _g(m, 2), "repo": _g(m, 3)}),
+
+    ("CREATE_PR", [
+        # verb-final: "REPO me HEAD se BASE me pr banao"
+        rf"({SLUG})\s+me\s+({SLUG})\s+se\s+({SLUG})\s+me\s+(?:pr|pull\s*request)\s+(?:banao|bnao|bana\s*do)",
+    ], lambda m: {"repo": _g(m, 1), "head": _g(m, 2), "base": _g(m, 3)}),
+
+    ("MERGE_PR", [
+        # verb-first: "merge pr 5 in REPO"
+        rf"merge\s+(?:pr|pull\s*request)\s+#?(\d+)\s+(?:in|for|of)\s+({SLUG})",
+    ], lambda m: {"pr_number": _int_or_none(_g(m, 1)), "repo": _g(m, 2)}),
+
+    ("MERGE_PR", [
+        # verb-final: "REPO me pr 5 merge karo"
+        rf"({SLUG})\s+me\s+(?:pr|pull\s*request)\s+#?(\d+)\s+merge\s*(?:karo|kar\s*do)?",
+    ], lambda m: {"repo": _g(m, 1), "pr_number": _int_or_none(_g(m, 2))}),
+
+    ("LIST_COMMITS", [
+        rf"(?:list|sare|show|dikhao|dikha)\s+(?:the\s+)?commits?\s+(?:in|of|for)\s+({SLUG})",
+        rf"({SLUG})\s+ke\s+commits?\s+(?:dikhao|dikha|show|list)",
+    ], lambda m: {"repo": _g(m, 1)}),
+
+    ("CREATE_ISSUE", [
+        # basic case only — title as a single SLUG-like token; anything with
+        # extra descriptive text falls through to AI per rule 7.
+        rf"(?:create|bnao|banao|naya|new)\s+(?:an?\s+)?issue\s+({SLUG})\s+(?:in|for|of)\s+({SLUG})",
+    ], lambda m: {"title": _g(m, 1), "repo": _g(m, 2)}),
+
+    ("CREATE_ISSUE", [
+        rf"({SLUG})\s+me\s+issue\s+({SLUG})\s+(?:banao|bnao|bana\s*do)",
+    ], lambda m: {"repo": _g(m, 1), "title": _g(m, 2)}),
+
+    ("GET_REPO_INFO", [
+        rf"(?:info|information|details)\s+(?:about|of|for)\s+(?:repo\s+)?({SLUG})",
+        rf"repo\s+info\s+({SLUG})",
+        rf"({SLUG})\s+ki\s+info\s+(?:do|dikhao|dikha)",
+    ], lambda m: {"repo": _g(m, 1)}),
+
+    ("RENAME_REPO", [
+        # verb-first: "rename OLD to NEW"
+        rf"rename\s+(?:repo\s+)?({SLUG})\s+to\s+({SLUG})",
+    ], lambda m: {"repo": _g(m, 1), "new_name": _g(m, 2)}),
+
+    ("RENAME_REPO", [
+        # verb-final: "OLD ka naam NEW karo"
+        rf"({SLUG})\s+ka\s+naam\s+({SLUG})\s+(?:karo|kar\s*do)",
+    ], lambda m: {"repo": _g(m, 1), "new_name": _g(m, 2)}),
+
+    ("TOGGLE_REPO_VISIBILITY", [
+        # verb-first: "make REPO private" / "make REPO public"
+        rf"(?:make|set)\s+({SLUG})\s+(private|public)",
+    ], lambda m: {"repo": _g(m, 1), "private": _g(m, 2) == "private"}),
+
+    ("TOGGLE_REPO_VISIBILITY", [
+        # verb-final: "REPO ko private karo" / "REPO ko public karo"
+        rf"({SLUG})\s+ko\s+(private|public)\s*(?:karo|kar\s*do)?",
+    ], lambda m: {"repo": _g(m, 1), "private": _g(m, 2) == "private"}),
+
+    ("ADD_COLLABORATOR", [
+        # verb-first: "add USERNAME to REPO" / "add USERNAME as collaborator to REPO"
+        rf"add\s+({SLUG})\s+(?:to|as\s+collaborator\s+(?:to|on|in))\s+({SLUG})",
+    ], lambda m: {"username": _g(m, 1), "repo": _g(m, 2)}),
+
+    ("ADD_COLLABORATOR", [
+        # verb-final: "REPO me USERNAME ko collaborator banao"
+        rf"({SLUG})\s+me\s+({SLUG})\s+ko\s+collaborator\s+(?:banao|bnao|bana\s*do|add\s*karo)",
+    ], lambda m: {"repo": _g(m, 1), "username": _g(m, 2)}),
+
     ("LIST_REPOS", [
         r"(?:list|sare|mere|show|dikhao|dikha)\s+.*\brepos?\b",
         r"^(?:repos?|my\s+repos?)$",
@@ -989,13 +1085,67 @@ INTENT_RULES = [
         rf"deploy\s+({SLUG})\s+(?:to|pe|on)\s+vercel",
     ], lambda m: {"project_name": _g(m, 1)}),
 
-    ("VERCEL_DEPLOY_STATUS", [
-        rf"(?:status|check)\s+(?:deploy(?:ment)?\s+)?(?:status\s+)?(?:of\s+)?({SLUG})",
-    ], lambda m: {"deployment_id": _g(m, 1)}),
-
     ("VERCEL_DELETE_PROJECT", [
         rf"(?:delete|uda|hata)\s+vercel\s+project\s+({SLUG})",
     ], lambda m: {"project_name": _g(m, 1)}),
+
+    # ── VERCEL: env / domain / deployments / rollback / logs ──
+    # Inserted here, before VERCEL_DEPLOY_STATUS's loose "status/check ...
+    # SLUG" pattern, since GET_LOGS/LIST_DEPLOYMENTS use distinct keywords
+    # ("logs", "deployments") that could otherwise be swallowed by a
+    # generic "check X" style match if that rule came first.
+    ("VERCEL_GET_ENV", [
+        rf"(?:get|show|dikhao|dikha)\s+.*env(?:ironment)?(?:\s+vars?)?\s+(?:for|of)\s+({SLUG})\s+.*vercel",
+        rf"vercel\s+.*env(?:ironment)?(?:\s+vars?)?\s+(?:for|of)\s+({SLUG})",
+    ], lambda m: {"project_name": _g(m, 1)}),
+
+    ("VERCEL_GET_ENV", [
+        rf"({SLUG})\s+(?:ka|ke)\s+env\s+(?:dikhao|dikha|show)\s+vercel",
+    ], lambda m: {"project_name": _g(m, 1)}),
+
+    # NOTE: env var KEY casing is restored from the original (non-lowered)
+    # message in parse_intent() below — same fix as RENDER_SET_ENV, since
+    # env keys are conventionally uppercase and case-sensitive on Vercel.
+    ("VERCEL_SET_ENV", [
+        rf"(?:set|add|update)\s+env\s+(\w+)\s*=\s*(\S+)\s+(?:for|in|on)\s+({SLUG})\s+.*vercel",
+        rf"(?:set|add|update)\s+vercel\s+env\s+(\w+)\s*=\s*(\S+)\s+(?:for|in|on)\s+({SLUG})",
+    ], lambda m: {"project_name": _g(m, 3), "key": _g(m, 1), "value": _g(m, 2)}),
+
+    ("VERCEL_ADD_DOMAIN", [
+        # verb-first: "add domain example.com to PROJECT"
+        rf"add\s+domain\s+({SLUG})\s+(?:to|for|on)\s+({SLUG})",
+    ], lambda m: {"domain": _g(m, 1), "project_name": _g(m, 2)}),
+
+    ("VERCEL_ADD_DOMAIN", [
+        # verb-final: "PROJECT me domain example.com jodo"
+        rf"({SLUG})\s+(?:me|pe)\s+domain\s+({SLUG})\s+(?:add\s*karo|jodo|jod\s*do)",
+    ], lambda m: {"project_name": _g(m, 1), "domain": _g(m, 2)}),
+
+    ("VERCEL_LIST_DEPLOYMENTS", [
+        rf"(?:list|sare|show|dikhao|dikha)\s+(?:the\s+)?deployments?\s+(?:of|for)\s+({SLUG})",
+        rf"({SLUG})\s+ke\s+deployments?\s+(?:dikhao|dikha|show|list)",
+    ], lambda m: {"project_name": _g(m, 1)}),
+
+    ("VERCEL_ROLLBACK", [
+        # negative lookahead excludes bare "karo"/"kar do" from being
+        # swallowed as the deployment_id when the verb-first pattern is
+        # matched against a verb-final phrase like "... rollback karo".
+        rf"rollback\s+(?:to\s+)?(?!karo\b|kar\s*do\b)({SLUG})",
+        rf"({SLUG})\s+pe\s+rollback\s*(?:karo|kar\s*do)?",
+    ], lambda m: {"deployment_id": _g(m, 1)}),
+
+    ("VERCEL_GET_LOGS", [
+        rf"(?:get|show|dikhao|dikha)\s+(?:the\s+)?logs?\s+(?:for|of)\s+({SLUG})\s+.*vercel",
+        rf"vercel\s+logs?\s+(?:for|of)\s+({SLUG})",
+    ], lambda m: {"deployment_id": _g(m, 1)}),
+
+    ("VERCEL_GET_LOGS", [
+        rf"({SLUG})\s+ke\s+vercel\s+logs?\s+(?:dikhao|dikha|show)",
+    ], lambda m: {"deployment_id": _g(m, 1)}),
+
+    ("VERCEL_DEPLOY_STATUS", [
+        rf"(?:status|check)\s+(?:deploy(?:ment)?\s+)?(?:status\s+)?(?:of\s+)?({SLUG})",
+    ], lambda m: {"deployment_id": _g(m, 1)}),
 
     # ── RENDER ──
     ("RENDER_LIST_SERVICES", [
@@ -1021,8 +1171,53 @@ INTENT_RULES = [
     ("RENDER_DEPLOY", [
         rf"deploy\s+({SLUG})\s+(?:to|pe|on)\s+render",
     ], lambda m: {"service_id": _g(m, 1)}),
-]
 
+    # ── RENDER: delete / create / logs / suspend / resume / deploy-history ──
+    # RENDER_LIST_SERVICES above already requires "services" explicitly, so
+    # RENDER_LIST_DEPLOYS (requiring "deploys") can't collide with it
+    # regardless of position, but is kept last in this group for readability.
+    ("RENDER_DELETE_SERVICE", [
+        rf"(?:delete|uda|udado|hata|hatao|remove)\s+(?:the\s+)?(?:render\s+)?service\s+({SLUG})",
+    ], lambda m: {"service_id": _g(m, 1)}),
+
+    ("RENDER_DELETE_SERVICE", [
+        rf"({SLUG})\s+service\s+(?:delete|uda(?:o|\s*do)?|hata(?:o|\s*do)?)\s*(?:karo|kar\s*do)?",
+    ], lambda m: {"service_id": _g(m, 1)}),
+
+    ("RENDER_CREATE_SERVICE", [
+        # basic case only — complex options (plan/env/build cmd) fall through
+        # to AI per rule 7.
+        rf"(?:create|bnao|banao|naya|new)\s+(?:a\s+)?render\s+service\s+(?:from|for)\s+({SLUG})",
+    ], lambda m: {"repo": _g(m, 1)}),
+
+    ("RENDER_CREATE_SERVICE", [
+        rf"({SLUG})\s+se\s+render\s+service\s+(?:banao|bnao|bana\s*do)",
+    ], lambda m: {"repo": _g(m, 1)}),
+
+    ("RENDER_GET_LOGS", [
+        rf"(?:get|show|dikhao|dikha)\s+(?:the\s+)?logs?\s+(?:for|of)\s+({SLUG})\s+.*render",
+        rf"render\s+logs?\s+(?:for|of)\s+({SLUG})",
+    ], lambda m: {"service_id": _g(m, 1)}),
+
+    ("RENDER_GET_LOGS", [
+        rf"({SLUG})\s+ke\s+render\s+logs?\s+(?:dikhao|dikha|show)",
+    ], lambda m: {"service_id": _g(m, 1)}),
+
+    ("RENDER_SUSPEND_SERVICE", [
+        rf"suspend\s+(?:the\s+)?(?:render\s+)?service\s+({SLUG})",
+        rf"({SLUG})\s+(?:ko\s+)?suspend\s*(?:karo|kar\s*do)?",
+    ], lambda m: {"service_id": _g(m, 1)}),
+
+    ("RENDER_RESUME_SERVICE", [
+        rf"resume\s+(?:the\s+)?(?:render\s+)?service\s+({SLUG})",
+        rf"({SLUG})\s+(?:ko\s+)?resume\s*(?:karo|kar\s*do)?",
+    ], lambda m: {"service_id": _g(m, 1)}),
+
+    ("RENDER_LIST_DEPLOYS", [
+        rf"(?:list|sare|show|dikhao|dikha)\s+(?:the\s+)?deploys?\s+(?:of|for)\s+({SLUG})",
+        rf"({SLUG})\s+ke\s+deploys?\s+(?:dikhao|dikha|show|list)",
+    ], lambda m: {"service_id": _g(m, 1)}),
+]
 # Keywords that signal the user wants generated content/explanation rather
 # than a direct API action — even if a structural pattern also matches
 # (e.g. "create file index.html in test with navbar" matches CREATE_FILE's
