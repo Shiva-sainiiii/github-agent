@@ -1263,7 +1263,8 @@ def parse_intent(message):
                 # Reject only when a REQUIRED identifying field came back
                 # empty/None. "path" is legitimately "" for LIST_FILES (repo
                 # root), so it's excluded from this required-field check.
-                required_fields = {"repo", "project_name", "service_id", "deployment_id"}
+                required_fields = {"repo", "project_name", "service_id", "deployment_id",
+                    "branch", "pr_number", "username", "key", "domain"}
                 if any(params.get(f) in (None, "") for f in required_fields if f in params):
                     continue
                 # RENDER_SET_ENV: env var keys are conventionally uppercase
