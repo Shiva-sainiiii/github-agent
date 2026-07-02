@@ -1267,17 +1267,21 @@ def parse_intent(message):
                     "branch", "pr_number", "username", "key", "domain"}
                 if any(params.get(f) in (None, "") for f in required_fields if f in params):
                     continue
-                # RENDER_SET_ENV: env var keys are conventionally uppercase
-                # and case-sensitive on the Render side. The match above ran
-                # against the lowercased message, so recover the original
-                # casing for the key by re-matching the same span against
-                # the original (non-lowered) message.
-                if cmd == "RENDER_SET_ENV":
+                # RENDER_SET_ENV / VERCEL_SET_ENV: env var keys are
+                # conventionally uppercase and case-sensitive on both
+                # platforms. The match above ran against the lowercased
+                # message, so recover the original casing for the key by
+                # re-matching the same span against the original
+                # (non-lowered) message.
+                if cmd in ("RENDER_SET_ENV", "VERCEL_SET_ENV"):
                     orig_m = re.search(pat, original, re.IGNORECASE)
                     if orig_m:
                         real_key = orig_m.group(1)
-                        params["env_vars"] = {real_key: params["env_vars"][list(params["env_vars"].keys())[0]]}
-                return cmd, params
+                        if cmd == "RENDER_SET_ENV":
+                            params["env_vars"] = {real_key: list(params["env_vars"].values())[0]}
+                        else:
+                            params["key"] = real_key
+                return cmd, params  
     return None, None
 
 
