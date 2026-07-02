@@ -919,7 +919,13 @@ def _g(m, i):
     except (IndexError, AttributeError):
         return None
 
-
+def _int_or_none(s):
+    """Safe int cast — returns None (which fails required_fields check) instead of raising."""
+    try:
+        return int(s)
+    except (TypeError, ValueError):
+        return None
+        
 INTENT_RULES = [
     # ── GITHUB ──
     # NOTE on ordering: more specific patterns (LIST_FILES, READ_FILE, etc.)
