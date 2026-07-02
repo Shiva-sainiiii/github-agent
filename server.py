@@ -164,7 +164,10 @@ def rd_api(method, endpoint, **kwargs):
 # ════════════════════════════════════════════════════════════════
 #  DESTRUCTIVE-ACTION CONFIRMATION
 # ════════════════════════════════════════════════════════════════
-DESTRUCTIVE_COMMANDS = {"DELETE_REPO", "DELETE_FILE", "VERCEL_DELETE_PROJECT"}
+DESTRUCTIVE_COMMANDS = {
+    "DELETE_REPO", "DELETE_FILE", "VERCEL_DELETE_PROJECT",
+    "DELETE_BRANCH", "RENDER_DELETE_SERVICE", "RENDER_SUSPEND_SERVICE",
+}
 
 
 def confirm_token(cmd, value):
@@ -190,6 +193,15 @@ def build_confirmation(cmd, params):
     elif cmd == "VERCEL_DELETE_PROJECT":
         target_desc = f"Vercel project `{params.get('project_name')}`"
         warn_text = "Vercel project aur uski saari deployments delete ho jayengi (GitHub repo safe rahega)."
+    elif cmd == "DELETE_BRANCH":
+        target_desc = f"Branch `{params.get('branch')}` in repo `{params.get('repo')}`"
+        warn_text = "Branch aur uska commit history reference permanently hat jayega."
+    elif cmd == "RENDER_DELETE_SERVICE":
+        target_desc = f"Render service `{params.get('service_id')}`"
+        warn_text = "Service permanently delete ho jayegi — logs, deploy history, sab kuch. Wapas nahi aayega."
+    elif cmd == "RENDER_SUSPEND_SERVICE":
+        target_desc = f"Render service `{params.get('service_id')}`"
+        warn_text = "Service suspend ho jayegi aur live traffic serve nahi karegi jab tak resume na karo."
     else:
         target_desc = str(params)
         warn_text = "Ye action wapas nahi ho sakta."
@@ -320,6 +332,146 @@ def execute_command(cmd, params):
                 return {"reply": f"🗑️ File `{path}` delete ho gayi.", "action": "delete_file"}
             else:
                 return {"reply": f"❌ Delete Error: {r.json().get('message','')}", "action": "error"}
+
+        elif cmd == "CREATE_BRANCH":
+            repo = params["repo"]
+            branch = params["branch"]
+            base = params.get("base", "main")
+            base_ref = gh_api("GET", f"/repos/{GITHUB_USERNAME}/{repo}/git/ref/heads/{base}")
+            if base_ref.status_code != 200:
+                return {"reply": f"❌ Base branch `{base}` nahi mila repo `{repo}` me.", "action": "error"}
+            base_sha = base_ref.json()["object"]["sha"]
+            r = gh_api("POST", f"/repos/{GITHUB_USERNAME}/{repo}/git/refs",
+                       json={"ref": f"refs/heads/{branch}", "sha": base_sha})
+            if r.status_code == 201:
+                return {"reply": f"✅ Branch `{branch}` ban gaya repo `{repo}` me (from `{base}`).",
+                        "action": "create_branch", "repo": repo, "branch": branch}
+            elif r.status_code == 422:
+                return {"reply": f"⚠️ Branch `{branch}` already exist karta hai.", "action": "warning"}
+            else:
+                return {"reply": f"❌ Branch create Error: {r.json().get('message','')}", "action": "error"}
+
+        elif cmd == "DELETE_BRANCH":
+            repo, branch = params["repo"], params["branch"]
+            r = gh_api("DELETE", f"/repos/{GITHUB_USERNAME}/{repo}/git/refs/heads/{branch}")
+            if r.status_code == 204:
+                return {"reply": f"🗑️ Branch `{branch}` delete ho gaya repo `{repo}` se.", "action": "delete_branch"}
+            else:
+                msg = r.json().get("message", "") if r.content else ""
+                return {"reply": f"❌ Branch delete Error: {msg}", "action": "error"}
+
+        elif cmd == "CREATE_PR":
+            repo = params["repo"]
+            head = params["head"]
+            base = params.get("base", "main")
+            title = params.get("title", f"Merge {head} into {base}")
+            body = params.get("body", "")
+            r = gh_api("POST", f"/repos/{GITHUB_USERNAME}/{repo}/pulls",
+                       json={"title": title, "head": head, "base": base, "body": body})
+            if r.status_code == 201:
+                pr = r.json()
+                return {"reply": f"✅ PR ban gaya!\n**#{pr['number']} — {title}**\n{head} → {base}\n🔗 {pr['html_url']}",
+                        "action": "create_pr", "url": pr["html_url"], "pr_number": pr["number"]}
+            else:
+                return {"reply": f"❌ PR create Error: {r.json().get('message','')}", "action": "error"}
+
+        elif cmd == "MERGE_PR":
+            repo = params["repo"]
+            pr_number = params["pr_number"]
+            method = params.get("merge_method", "merge")
+            r = gh_api("PUT", f"/repos/{GITHUB_USERNAME}/{repo}/pulls/{pr_number}/merge",
+                       json={"merge_method": method})
+            if r.status_code == 200:
+                return {"reply": f"✅ PR #{pr_number} merge ho gaya repo `{repo}` me (`{method}`).",
+                        "action": "merge_pr", "pr_number": pr_number}
+            else:
+                return {"reply": f"❌ Merge Error: {r.json().get('message','PR merge nahi hua — conflicts ho sakte hain')}", "action": "error"}
+
+        elif cmd == "LIST_COMMITS":
+            repo = params["repo"]
+            branch = params.get("branch", "")
+            limit = params.get("limit", 10)
+            endpoint = f"/repos/{GITHUB_USERNAME}/{repo}/commits?per_page={limit}"
+            if branch:
+                endpoint += f"&sha={branch}"
+            r = gh_api("GET", endpoint)
+            if r.status_code == 200:
+                commits = r.json()
+                if not commits:
+                    return {"reply": "Koi commits nahi mile.", "action": "list_commits", "commits": []}
+                lines = []
+                for c in commits:
+                    sha_short = c["sha"][:7]
+                    msg = c["commit"]["message"].split("\n")[0][:80]
+                    author = c["commit"]["author"]["name"]
+                    lines.append(f"`{sha_short}` {msg} — _{author}_")
+                return {"reply": f"Recent {len(commits)} commits in `{repo}`:\n\n" + "\n".join(lines),
+                        "action": "list_commits"}
+            else:
+                return {"reply": f"❌ Commits fetch nahi hue: {r.json().get('message','')}", "action": "error"}
+
+        elif cmd == "CREATE_ISSUE":
+            repo = params["repo"]
+            title = params["title"]
+            body = params.get("body", "")
+            r = gh_api("POST", f"/repos/{GITHUB_USERNAME}/{repo}/issues", json={"title": title, "body": body})
+            if r.status_code == 201:
+                issue = r.json()
+                return {"reply": f"✅ Issue ban gaya!\n**#{issue['number']} — {title}**\n🔗 {issue['html_url']}",
+                        "action": "create_issue", "url": issue["html_url"], "issue_number": issue["number"]}
+            else:
+                return {"reply": f"❌ Issue create Error: {r.json().get('message','')}", "action": "error"}
+
+        elif cmd == "GET_REPO_INFO":
+            repo = params["repo"]
+            r = gh_api("GET", f"/repos/{GITHUB_USERNAME}/{repo}")
+            if r.status_code == 200:
+                d = r.json()
+                reply = (f"📁 **{d['name']}**\n"
+                         f"⭐ Stars: {d['stargazers_count']} | 🍴 Forks: {d['forks_count']} | "
+                         f"👁️ Watchers: {d['watchers_count']}\n"
+                         f"🔓 Visibility: `{d['visibility']}`\n"
+                         f"🕓 Last updated: {d['updated_at']}\n"
+                         f"🔗 {d['html_url']}")
+                if d.get("description"):
+                    reply += f"\n📝 {d['description']}"
+                return {"reply": reply, "action": "repo_info"}
+            else:
+                return {"reply": f"❌ Repo info fetch nahi hui: {r.json().get('message','')}", "action": "error"}
+
+        elif cmd == "RENAME_REPO":
+            repo = params["repo"]
+            new_name = re.sub(r"[^a-zA-Z0-9_.-]", "-", params["new_name"].strip())
+            r = gh_api("PATCH", f"/repos/{GITHUB_USERNAME}/{repo}", json={"name": new_name})
+            if r.status_code == 200:
+                d = r.json()
+                return {"reply": f"✅ Repo rename ho gaya!\n`{repo}` → **{new_name}**\n🔗 {d['html_url']}",
+                        "action": "rename_repo", "url": d["html_url"]}
+            else:
+                return {"reply": f"❌ Rename Error: {r.json().get('message','')}", "action": "error"}
+
+        elif cmd == "TOGGLE_REPO_VISIBILITY":
+            repo = params["repo"]
+            private = params["private"]
+            r = gh_api("PATCH", f"/repos/{GITHUB_USERNAME}/{repo}", json={"private": private})
+            if r.status_code == 200:
+                vis = "private 🔒" if private else "public 🌐"
+                return {"reply": f"✅ Repo `{repo}` ab **{vis}** hai.", "action": "toggle_visibility"}
+            else:
+                return {"reply": f"❌ Visibility change Error: {r.json().get('message','')}", "action": "error"}
+
+        elif cmd == "ADD_COLLABORATOR":
+            repo = params["repo"]
+            username = params["username"]
+            permission = params.get("permission", "push")
+            r = gh_api("PUT", f"/repos/{GITHUB_USERNAME}/{repo}/collaborators/{username}",
+                       json={"permission": permission})
+            if r.status_code in (201, 204):
+                note = "Invite bhej diya gaya" if r.status_code == 201 else "Already collaborator tha, permission update ho gayi"
+                return {"reply": f"✅ `{username}` ko `{repo}` pe `{permission}` access mil gaya.\n{note}.",
+                        "action": "add_collaborator"}
+            else:
+                return {"reply": f"❌ Collaborator add Error: {r.json().get('message','')}", "action": "error"}
 
         # ──────────────── VERCEL ────────────────
         elif cmd == "VERCEL_LIST_PROJECTS":
@@ -454,6 +606,113 @@ def execute_command(cmd, params):
                 err = r.json().get("error", {}).get("message", r.text[:200]) if r.text else r.text[:200]
                 return {"reply": f"❌ Vercel project delete Error: {err}", "action": "error"}
 
+        elif cmd == "VERCEL_GET_ENV":
+            project_name = params["project_name"]
+            proj = vercel_find_project(project_name)
+            if not proj:
+                return {"reply": f"❌ Vercel project `{project_name}` nahi mila.", "action": "error"}
+            proj_id = proj.get("id")
+            r = vc_api("GET", f"/v9/projects/{proj_id}/env")
+            if r.status_code == 200:
+                envs = r.json().get("envs", [])
+                if not envs:
+                    return {"reply": f"Project `{project_name}` me koi env vars nahi hai.", "action": "vercel_env"}
+                lines = [f"`{e['key']}` — targets: {', '.join(e.get('target', []))}" for e in envs]
+                return {"reply": f"Env vars for `{project_name}` (values encrypted, sirf keys dikha sakta hu):\n\n" + "\n".join(lines),
+                        "action": "vercel_env"}
+            else:
+                return {"reply": f"❌ Env vars fetch nahi hue: {r.text[:200]}", "action": "error"}
+
+        elif cmd == "VERCEL_SET_ENV":
+            project_name = params["project_name"]
+            key = params["key"]
+            value = params["value"]
+            target = params.get("target", ["production", "preview", "development"])
+            proj = vercel_find_project(project_name)
+            if not proj:
+                return {"reply": f"❌ Vercel project `{project_name}` nahi mila.", "action": "error"}
+            proj_id = proj.get("id")
+            r = vc_api("POST", f"/v10/projects/{proj_id}/env",
+                       json={"key": key, "value": value, "type": "encrypted", "target": target})
+            if r.status_code in (200, 201):
+                return {"reply": f"✅ Env var `{key}` set ho gaya `{project_name}` me.\n⚠️ Naya deploy trigger karo change apply karne ke liye.",
+                        "action": "vercel_env_set"}
+            else:
+                err = r.json().get("error", {}).get("message", r.text[:200])
+                return {"reply": f"❌ Env set Error: {err}", "action": "error"}
+
+        elif cmd == "VERCEL_ADD_DOMAIN":
+            project_name = params["project_name"]
+            domain = params["domain"]
+            proj = vercel_find_project(project_name)
+            if not proj:
+                return {"reply": f"❌ Vercel project `{project_name}` nahi mila.", "action": "error"}
+            proj_id = proj.get("id")
+            r = vc_api("POST", f"/v10/projects/{proj_id}/domains", json={"name": domain})
+            if r.status_code in (200, 201):
+                return {"reply": f"✅ Domain `{domain}` add ho gaya `{project_name}` pe.\n⚠️ DNS records apne domain provider pe configure karne padenge — Vercel dashboard me instructions milenge.",
+                        "action": "vercel_add_domain"}
+            else:
+                err = r.json().get("error", {}).get("message", r.text[:200])
+                return {"reply": f"❌ Domain add Error: {err}", "action": "error"}
+
+        elif cmd == "VERCEL_LIST_DEPLOYMENTS":
+            project_name = params["project_name"]
+            limit = params.get("limit", 10)
+            proj = vercel_find_project(project_name)
+            if not proj:
+                return {"reply": f"❌ Vercel project `{project_name}` nahi mila.", "action": "error"}
+            proj_id = proj.get("id")
+            r = vc_api("GET", f"/v6/deployments?projectId={proj_id}&limit={limit}")
+            if r.status_code == 200:
+                deps = r.json().get("deployments", [])
+                if not deps:
+                    return {"reply": "Koi deployments nahi mile.", "action": "vercel_deployments"}
+                icon_map = {"READY": "✅", "ERROR": "❌", "BUILDING": "⏳", "QUEUED": "⏳", "CANCELED": "🚫"}
+                lines = []
+                for d in deps:
+                    icon = icon_map.get(d.get("state", ""), "ℹ️")
+                    lines.append(f"{icon} `{d['uid']}` — {d.get('state')} — {d.get('target', 'preview')}")
+                return {"reply": f"Recent {len(deps)} deployments for `{project_name}`:\n\n" + "\n".join(lines),
+                        "action": "vercel_deployments"}
+            else:
+                return {"reply": f"❌ Deployments fetch nahi hue: {r.text[:200]}", "action": "error"}
+
+        elif cmd == "VERCEL_ROLLBACK":
+            deployment_id = params["deployment_id"]
+            r = vc_api("GET", f"/v13/deployments/{deployment_id}")
+            if r.status_code != 200:
+                return {"reply": f"❌ Deployment `{deployment_id}` nahi mila.", "action": "error"}
+            dep = r.json()
+            proj_id = dep.get("projectId")
+            r3 = vc_api("POST", f"/v9/projects/{proj_id}/promote/{deployment_id}")
+            if r3.status_code in (200, 201, 204):
+                return {"reply": f"✅ Rollback ho gaya — deployment `{deployment_id}` ab production pe promote ho gaya.",
+                        "action": "vercel_rollback"}
+            else:
+                err = r3.text[:200]
+                return {"reply": f"❌ Rollback Error: {err}\n\nNote: Vercel rollback API access-level pe restricted ho sakta hai plan ke hisaab se.",
+                        "action": "error"}
+
+        elif cmd == "VERCEL_GET_LOGS":
+            deployment_id = params["deployment_id"]
+            limit = params.get("limit", 50)
+            r = vc_api("GET", f"/v2/deployments/{deployment_id}/events?limit={limit}")
+            if r.status_code == 200:
+                events = r.json()
+                if not events:
+                    return {"reply": f"Deployment `{deployment_id}` ke liye koi logs nahi mile.", "action": "vercel_logs"}
+                lines = []
+                for e in events[-limit:]:
+                    text = e.get("payload", {}).get("text") or e.get("text") or ""
+                    if text:
+                        lines.append(text.strip())
+                preview = "\n".join(lines[-40:]) or "(logs khaali hain)"
+                return {"reply": f"📜 Logs for `{deployment_id}` (last {len(lines[-40:])} lines):\n\n```\n{preview}\n```",
+                        "action": "vercel_logs"}
+            else:
+                return {"reply": f"❌ Logs fetch nahi hue: {r.text[:200]}", "action": "error"}
+
         # ──────────────── RENDER ────────────────
         elif cmd == "RENDER_LIST_SERVICES":
             r = rd_api("GET", "/services?limit=50")
@@ -529,6 +788,107 @@ def execute_command(cmd, params):
                         "action": "render_deploy", "deploy_id": dep_id, "status": status}
             else:
                 return {"reply": f"❌ Render deploy Error: {r.text[:200]}", "action": "error"}
+
+        elif cmd == "RENDER_DELETE_SERVICE":
+            service_id = params["service_id"]
+            r = rd_api("DELETE", f"/services/{service_id}")
+            if r.status_code in (200, 204):
+                return {"reply": f"🗑️ Render service `{service_id}` delete ho gaya.", "action": "render_delete_service"}
+            else:
+                return {"reply": f"❌ Service delete Error: {r.text[:200]}", "action": "error"}
+
+        elif cmd == "RENDER_CREATE_SERVICE":
+            repo = params["repo"]
+            name = params.get("name", repo)
+            svc_type = params.get("type", "web_service")
+            env = params.get("env", "node")
+            plan = params.get("plan", "free")
+            branch = params.get("branch", "main")
+            build_cmd = params.get("build_command", "")
+            start_cmd = params.get("start_command", "")
+            payload = {
+                "type": svc_type,
+                "name": name,
+                "repo": f"https://github.com/{GITHUB_USERNAME}/{repo}",
+                "branch": branch,
+                "serviceDetails": {
+                    "env": env,
+                    "plan": plan,
+                    "envSpecificDetails": {"buildCommand": build_cmd, "startCommand": start_cmd},
+                },
+            }
+            r = rd_api("POST", "/services", json=payload)
+            if r.status_code in (200, 201):
+                d = r.json()
+                svc = d.get("service", d)
+                url = svc.get("serviceDetails", {}).get("url", "")
+                reply = f"✅ Render service ban gaya!\n**{svc.get('name')}**\nID: `{svc.get('id')}`"
+                if url:
+                    reply += f"\n🔗 {url}"
+                return {"reply": reply, "action": "render_create_service", "service_id": svc.get("id")}
+            else:
+                return {"reply": f"❌ Service create Error: {r.text[:200]}", "action": "error"}
+
+        elif cmd == "RENDER_GET_LOGS":
+            service_id = params["service_id"]
+            limit = params.get("limit", 50)
+            r = rd_api("GET", f"/logs?ownerId=&resource={service_id}&limit={limit}")
+            if r.status_code != 200:
+                # fallback: some Render accounts require the /log-stream style query params
+                r = rd_api("GET", f"/services/{service_id}/logs?limit={limit}")
+            if r.status_code == 200:
+                data = r.json()
+                items = data.get("logs", data) if isinstance(data, dict) else data
+                if not items:
+                    return {"reply": f"Service `{service_id}` ke liye koi logs nahi mile.", "action": "render_logs"}
+                lines = []
+                for item in items[-limit:]:
+                    msg = item.get("message", "") if isinstance(item, dict) else str(item)
+                    if msg:
+                        lines.append(msg.strip())
+                preview = "\n".join(lines[-40:]) or "(logs khaali hain)"
+                return {"reply": f"📜 Logs for `{service_id}` (last {len(lines[-40:])} lines):\n\n```\n{preview}\n```",
+                        "action": "render_logs"}
+            else:
+                return {"reply": f"❌ Logs fetch nahi hue: {r.text[:200]}", "action": "error"}
+
+        elif cmd == "RENDER_SUSPEND_SERVICE":
+            service_id = params["service_id"]
+            r = rd_api("POST", f"/services/{service_id}/suspend")
+            if r.status_code in (200, 201, 204):
+                return {"reply": f"⏸️ Service `{service_id}` suspend ho gaya. Cost bachega jab tak resume na karo.",
+                        "action": "render_suspend"}
+            else:
+                return {"reply": f"❌ Suspend Error: {r.text[:200]}", "action": "error"}
+
+        elif cmd == "RENDER_RESUME_SERVICE":
+            service_id = params["service_id"]
+            r = rd_api("POST", f"/services/{service_id}/resume")
+            if r.status_code in (200, 201, 204):
+                return {"reply": f"▶️ Service `{service_id}` resume ho gaya.", "action": "render_resume"}
+            else:
+                return {"reply": f"❌ Resume Error: {r.text[:200]}", "action": "error"}
+
+        elif cmd == "RENDER_LIST_DEPLOYS":
+            service_id = params["service_id"]
+            limit = params.get("limit", 10)
+            r = rd_api("GET", f"/services/{service_id}/deploys?limit={limit}")
+            if r.status_code == 200:
+                items = r.json()
+                if not items:
+                    return {"reply": "Koi deploys nahi mile.", "action": "render_deploys"}
+                icon_map = {"live": "✅", "build_failed": "❌", "update_failed": "❌",
+                            "deactivated": "⏸️", "build_in_progress": "⏳", "update_in_progress": "⏳", "canceled": "🚫"}
+                lines = []
+                for item in items:
+                    dep = item.get("deploy", item)
+                    status = dep.get("status", "unknown")
+                    icon = icon_map.get(status, "ℹ️")
+                    lines.append(f"{icon} `{dep.get('id','')}` — {status} — {dep.get('createdAt','')}")
+                return {"reply": f"Recent {len(items)} deploys for `{service_id}`:\n\n" + "\n".join(lines),
+                        "action": "render_deploys"}
+            else:
+                return {"reply": f"❌ Deploy history fetch nahi hui: {r.text[:200]}", "action": "error"}
 
         else:
             return {"reply": f"❌ Unknown command: {cmd}", "action": "error"}
@@ -743,21 +1103,43 @@ You act by outputting EXACTLY ONE command per response. Never combine commands. 
 6. EDIT_FILE: {{"repo":"repo-name","path":"file.html","content":"updated full content","message":"what changed"}}
 7. DELETE_FILE: {{"repo":"repo-name","path":"file.html","message":"reason"}}
 8. LIST_FILES: {{"repo":"repo-name","path":""}}
+9. CREATE_BRANCH: {{"repo":"repo-name","branch":"new-branch","base":"main"}}
+10. DELETE_BRANCH: {{"repo":"repo-name","branch":"branch-name"}}
+11. CREATE_PR: {{"repo":"repo-name","head":"feature-branch","base":"main","title":"PR title","body":"description"}}
+12. MERGE_PR: {{"repo":"repo-name","pr_number":12,"merge_method":"merge"}}
+13. LIST_COMMITS: {{"repo":"repo-name","branch":"main","limit":10}}
+14. CREATE_ISSUE: {{"repo":"repo-name","title":"issue title","body":"description"}}
+15. GET_REPO_INFO: {{"repo":"repo-name"}}
+16. RENAME_REPO: {{"repo":"old-name","new_name":"new-name"}}
+17. TOGGLE_REPO_VISIBILITY: {{"repo":"repo-name","private":true}}
+18. ADD_COLLABORATOR: {{"repo":"repo-name","username":"github-user","permission":"push"}}
 
 ──────────────── VERCEL COMMANDS ────────────────
 
-9. VERCEL_LIST_PROJECTS
-10. VERCEL_IMPORT_REPO: {{"repo":"repo-name","project_name":"optional-custom-name","framework":"optional-framework-preset"}}
-11. VERCEL_DEPLOY: {{"project_name":"project-name"}}
-12. VERCEL_DEPLOY_STATUS: {{"deployment_id":"dpl_xxx"}}
-13. VERCEL_DELETE_PROJECT: {{"project_name":"project-name"}}
+19. VERCEL_LIST_PROJECTS
+20. VERCEL_IMPORT_REPO: {{"repo":"repo-name","project_name":"optional-custom-name","framework":"optional-framework-preset"}}
+21. VERCEL_DEPLOY: {{"project_name":"project-name"}}
+22. VERCEL_DEPLOY_STATUS: {{"deployment_id":"dpl_xxx"}}
+23. VERCEL_DELETE_PROJECT: {{"project_name":"project-name"}}
+24. VERCEL_GET_ENV: {{"project_name":"project-name"}}
+25. VERCEL_SET_ENV: {{"project_name":"project-name","key":"KEY","value":"value","target":["production","preview","development"]}}
+26. VERCEL_ADD_DOMAIN: {{"project_name":"project-name","domain":"example.com"}}
+27. VERCEL_LIST_DEPLOYMENTS: {{"project_name":"project-name","limit":10}}
+28. VERCEL_ROLLBACK: {{"deployment_id":"dpl_xxx"}}
+29. VERCEL_GET_LOGS: {{"deployment_id":"dpl_xxx","limit":50}}
 
 ──────────────── RENDER COMMANDS ────────────────
 
-14. RENDER_LIST_SERVICES
-15. RENDER_GET_ENV: {{"service_id":"srv-xxx"}}
-16. RENDER_SET_ENV: {{"service_id":"srv-xxx","env_vars":{{"KEY":"value"}}}}
-17. RENDER_DEPLOY: {{"service_id":"srv-xxx","clear_cache":true}}
+30. RENDER_LIST_SERVICES
+31. RENDER_GET_ENV: {{"service_id":"srv-xxx"}}
+32. RENDER_SET_ENV: {{"service_id":"srv-xxx","env_vars":{{"KEY":"value"}}}}
+33. RENDER_DEPLOY: {{"service_id":"srv-xxx","clear_cache":true}}
+34. RENDER_DELETE_SERVICE: {{"service_id":"srv-xxx"}}
+35. RENDER_CREATE_SERVICE: {{"repo":"repo-name","name":"service-name","type":"web_service","env":"node","plan":"free","branch":"main","build_command":"","start_command":""}}
+36. RENDER_GET_LOGS: {{"service_id":"srv-xxx","limit":50}}
+37. RENDER_SUSPEND_SERVICE: {{"service_id":"srv-xxx"}}
+38. RENDER_RESUME_SERVICE: {{"service_id":"srv-xxx"}}
+39. RENDER_LIST_DEPLOYS: {{"service_id":"srv-xxx","limit":10}}
 
 ──────────────── RULES ────────────────
 
@@ -792,9 +1174,15 @@ Rules:
 COMMANDS = [
     "CREATE_REPO:", "DELETE_REPO:", "LIST_REPOS", "CREATE_FILE:",
     "READ_FILE:", "EDIT_FILE:", "DELETE_FILE:", "LIST_FILES:",
+    "CREATE_BRANCH:", "DELETE_BRANCH:", "CREATE_PR:", "MERGE_PR:",
+    "LIST_COMMITS:", "CREATE_ISSUE:", "GET_REPO_INFO:", "RENAME_REPO:",
+    "TOGGLE_REPO_VISIBILITY:", "ADD_COLLABORATOR:",
     "VERCEL_LIST_PROJECTS", "VERCEL_IMPORT_REPO:", "VERCEL_DEPLOY:", "VERCEL_DEPLOY_STATUS:",
-    "VERCEL_DELETE_PROJECT:",
+    "VERCEL_DELETE_PROJECT:", "VERCEL_GET_ENV:", "VERCEL_SET_ENV:", "VERCEL_ADD_DOMAIN:",
+    "VERCEL_LIST_DEPLOYMENTS:", "VERCEL_ROLLBACK:", "VERCEL_GET_LOGS:",
     "RENDER_LIST_SERVICES", "RENDER_GET_ENV:", "RENDER_SET_ENV:", "RENDER_DEPLOY:",
+    "RENDER_DELETE_SERVICE:", "RENDER_CREATE_SERVICE:", "RENDER_GET_LOGS:",
+    "RENDER_SUSPEND_SERVICE:", "RENDER_RESUME_SERVICE:", "RENDER_LIST_DEPLOYS:",
 ]
 
 
